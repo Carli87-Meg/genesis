@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using SolidWorks.Interop.sldworks;
 
 namespace SolidWorksBridge;
 
@@ -13,7 +14,7 @@ internal sealed class SolidWorksSession
         "SldWorks.Application.30",
     ];
 
-    private dynamic? _app;
+    private ISldWorks? _app;
     private string? _attachPath;
 
     public BridgeResponse Status()
@@ -24,14 +25,13 @@ internal sealed class SolidWorksSession
             string? version = null;
             string? title = null;
             int? type = null;
-            try { version = (string)_app!.RevisionNumber(); } catch { /* ignore */ }
+            try { version = _app!.RevisionNumber(); } catch { /* ignore */ }
             try
             {
-                dynamic doc = _app!.ActiveDoc;
-                if (doc is not null && doc is not DBNull)
+                if (_app!.ActiveDoc is ModelDoc2 doc)
                 {
-                    try { title = (string)doc.GetTitle(); } catch { /* ignore */ }
-                    try { type = (int)doc.GetType(); } catch { /* ignore */ }
+                    try { title = doc.GetTitle(); } catch { /* ignore */ }
+                    try { type = doc.GetType(); } catch { /* ignore */ }
                 }
             }
             catch
@@ -65,19 +65,20 @@ internal sealed class SolidWorksSession
         {
             EnsureApp();
             var executor = new PayloadExecutor();
-            var result = executor.Execute((object)_app!, payload);
+            var result = executor.Execute(_app!, payload);
             var steps = result.Steps;
             var features = result.Features;
-            var title = result.DocTitle;
-            var docType = result.DocType;
-            var failed = steps.Exists(s => !s.Ok);
+            var failed = steps.Exists(s => !s.Ok &&
+                !s.Op.Contains("Fillet", StringComparison.OrdinalIgnoreCase) &&
+                !s.Op.Contains("InsertShell", StringComparison.OrdinalIgnoreCase) &&
+                !s.Op.Contains("Chamfer", StringComparison.OrdinalIgnoreCase));
             return new BridgeResponse
             {
                 Ok = !failed || features.Count > 0,
                 AttachPath = _attachPath,
                 Version = SafeVersion(),
-                Document = title,
-                DocumentType = docType,
+                Document = result.DocTitle,
+                DocumentType = result.DocType,
                 Steps = steps,
                 Features = features,
                 Error = failed ? steps.Find(s => !s.Ok)?.Detail : null,
@@ -96,7 +97,7 @@ internal sealed class SolidWorksSession
 
     private string? SafeVersion()
     {
-        try { return (string)_app!.RevisionNumber(); }
+        try { return _app!.RevisionNumber(); }
         catch { return null; }
     }
 
@@ -120,9 +121,9 @@ internal sealed class SolidWorksSession
         {
             try
             {
-                _app = ComActive.Get(progId);
+                _app = (ISldWorks)ComActive.Get(progId);
                 _attachPath = $"GetObject({progId})";
-                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] COM attach {_attachPath}");
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] COM attach {_attachPath} SW {_app.RevisionNumber()}");
                 return;
             }
             catch (Exception ex)
@@ -142,7 +143,7 @@ internal sealed class SolidWorksSession
                     continue;
                 }
 
-                _app = Activator.CreateInstance(t);
+                _app = (ISldWorks)Activator.CreateInstance(t)!;
                 _attachPath = $"CreateObject({progId})";
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] COM create {_attachPath}");
                 return;

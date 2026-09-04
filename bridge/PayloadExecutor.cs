@@ -1,44 +1,35 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using SolidWorks.Interop.sldworks;
+using SolidWorks.Interop.swconst;
 
 namespace SolidWorksBridge;
 
 internal sealed class PayloadExecutor
 {
-    private const int SwDocPart = 1;
-    private const int SwDocAssembly = 2;
-    private const int SwDocDrawing = 3;
-    private const int SwEndCondBlind = 0;
-    private const int SwEndCondThroughAll = 1;
-    private const int SwMateCoincident = 0;
-    private const int SwMateConcentric = 1;
-    private const int SwMatePerpendicular = 3;
-    private const int SwMateParallel = 2;
-    private const int SwMateDistance = 5;
-
     private readonly List<ExecStep> _steps = [];
     private readonly Dictionary<string, string> _created = new(StringComparer.OrdinalIgnoreCase);
 
     public (List<ExecStep> Steps, List<FeatureInfo> Features, string? DocTitle, int? DocType) Execute(
-        object swAppObj,
+        ISldWorks swApp,
         SolidWorksDocumentPayload payload)
     {
-        dynamic swApp = swAppObj;
         _steps.Clear();
         _created.Clear();
 
-        TrySet(swApp, "UserControlBackground", true);
-        TrySet(swApp, "Visible", true);
-        TrySet(swApp, "UserControl", true);
-        TrySet(swApp, "CommandInProgress", true);
-        // swInputDimValOnCreate — avoid blocking dimension dialogs
-        TryCall(swApp, "SetUserPreferenceToggle", 10, false);
-
-        dynamic? model = null;
+        swApp.Visible = true;
+        try { swApp.UserControl = true; } catch { /* ignore */ }
+        try { swApp.CommandInProgress = true; } catch { /* ignore */ }
         try
         {
-            model = OpenDocument(swApp, payload.Document);
+            swApp.SetUserPreferenceToggle((int)swUserPreferenceToggle_e.swInputDimValOnCreate, false);
+        }
+        catch { /* ignore */ }
+
+        try
+        {
+            var model = OpenDocument(swApp, payload.Document);
             if (model is null)
             {
                 Step("OpenDocument", false, "ActiveDoc è null dopo NewDocument/GetObject");
@@ -51,11 +42,11 @@ internal sealed class PayloadExecutor
             {
                 try
                 {
-                    RunOperation(swApp, model, op, payload.Units);
+                    RunOperation(model, op, payload.Units);
                 }
                 catch (Exception ex)
                 {
-                    Step(op.Type, false, FormatEx(ex));
+                    Step(op.Type ?? "op", false, FormatEx(ex));
                 }
             }
 
@@ -71,51 +62,36 @@ internal sealed class PayloadExecutor
                 Step("ForceRebuild3", false, FormatEx(ex));
             }
 
-            try
-            {
-                model.ViewZoomtofit2();
-            }
-            catch
-            {
-                /* optional */
-            }
+            try { model.ViewZoomtofit2(); } catch { /* optional */ }
 
             string? title = null;
             int? docType = null;
-            try { title = (string)model.GetTitle(); } catch { /* ignore */ }
-            try { docType = (int)model.GetType(); } catch { /* ignore */ }
+            try { title = model.GetTitle(); } catch { /* ignore */ }
+            try { docType = model.GetType(); } catch { /* ignore */ }
 
-            var features = FeatureTreeReader.Read((object)model);
+            var features = FeatureTreeReader.Read(model);
             Step("FeatureByPositionReverse", true, $"{features.Count} feature (GetTypeName2)");
             return (_steps, features, title, docType);
         }
         finally
         {
-            TrySet(swApp, "CommandInProgress", false);
+            try { swApp.CommandInProgress = false; } catch { /* ignore */ }
         }
     }
 
-    private dynamic? OpenDocument(dynamic swApp, DocumentSpec spec)
+    private ModelDoc2? OpenDocument(ISldWorks swApp, DocumentSpec spec)
     {
         var kind = (spec.Type ?? "part").Trim().ToLowerInvariant();
 
         if (spec.AttachToActive)
         {
-            try
+            if (swApp.ActiveDoc is ModelDoc2 active)
             {
-                dynamic active = swApp.ActiveDoc;
-                if (active is not null && active is not DBNull)
-                {
-                    Step("AttachToActive", true, (string)active.GetTitle());
-                    return active;
-                }
+                Step("AttachToActive", true, active.GetTitle());
+                return active;
+            }
 
-                Step("AttachToActive", false, "Nessun documento attivo");
-            }
-            catch (Exception ex)
-            {
-                Step("AttachToActive", false, FormatEx(ex));
-            }
+            Step("AttachToActive", false, "Nessun documento attivo");
         }
 
         return kind switch
@@ -126,25 +102,25 @@ internal sealed class PayloadExecutor
         };
     }
 
-    private dynamic? NewPart(dynamic swApp, string name)
+    private ModelDoc2? NewPart(ISldWorks swApp, string name)
     {
         var template = TemplateLocator.Part();
-        object? doc = null;
+        ModelDoc2? doc = null;
         try
         {
-            doc = swApp.NewDocument(template, 0, 0.0, 0.0);
-            Step("NewDocument", doc is not null && doc is not DBNull, $"template={template}");
+            doc = swApp.NewDocument(template, 0, 0.0, 0.0) as ModelDoc2;
+            Step("NewDocument", doc is not null, $"template={template}");
         }
         catch (Exception ex)
         {
             Step("NewDocument", false, FormatEx(ex));
         }
 
-        if (doc is null || doc is DBNull)
+        if (doc is null)
         {
             try
             {
-                doc = swApp.NewPart();
+                doc = swApp.NewPart() as ModelDoc2;
                 Step("NewPart", doc is not null, "fallback NewPart()");
             }
             catch (Exception ex)
@@ -154,28 +130,28 @@ internal sealed class PayloadExecutor
         }
 
         RenameIfPossible(doc, name);
-        return doc as dynamic ?? (dynamic?)doc;
+        return doc;
     }
 
-    private dynamic? NewAssembly(dynamic swApp, string name)
+    private ModelDoc2? NewAssembly(ISldWorks swApp, string name)
     {
-        object? doc = null;
+        ModelDoc2? doc = null;
         try
         {
-            doc = swApp.NewAssembly();
-            Step("NewAssembly", doc is not null && doc is not DBNull, name);
+            doc = swApp.NewAssembly() as ModelDoc2;
+            Step("NewAssembly", doc is not null, name);
         }
         catch (Exception ex)
         {
             Step("NewAssembly", false, FormatEx(ex));
         }
 
-        if (doc is null || doc is DBNull)
+        if (doc is null)
         {
             var template = TemplateLocator.Assembly();
             try
             {
-                doc = swApp.NewDocument(template, 0, 0.0, 0.0);
+                doc = swApp.NewDocument(template, 0, 0.0, 0.0) as ModelDoc2;
                 Step("NewDocument", doc is not null, $"assembly template={template}");
             }
             catch (Exception ex)
@@ -185,25 +161,24 @@ internal sealed class PayloadExecutor
         }
 
         RenameIfPossible(doc, name);
-        return doc as dynamic ?? (dynamic?)doc;
+        return doc;
     }
 
-    private dynamic? NewDrawing(dynamic swApp, string name)
+    private ModelDoc2? NewDrawing(ISldWorks swApp, string name)
     {
-        object? doc = null;
+        ModelDoc2? doc = null;
         var template = TemplateLocator.Drawing();
         try
         {
-            // NewDrawing2(templateDir unused in some versions): paper A3 landscape-ish
-            doc = swApp.NewDrawing2(2, template, 12, 0.42, 0.297);
-            Step("NewDrawing", doc is not null && doc is not DBNull, $"template={template}");
+            doc = swApp.NewDrawing2(2, template, 12, 0.42, 0.297) as ModelDoc2;
+            Step("NewDrawing", doc is not null, $"template={template}");
         }
         catch (Exception ex)
         {
             Step("NewDrawing", false, FormatEx(ex));
             try
             {
-                doc = swApp.NewDocument(template, 0, 0.42, 0.297);
+                doc = swApp.NewDocument(template, 0, 0.42, 0.297) as ModelDoc2;
                 Step("NewDocument", doc is not null, "drawing via NewDocument");
             }
             catch (Exception ex2)
@@ -213,44 +188,28 @@ internal sealed class PayloadExecutor
         }
 
         RenameIfPossible(doc, name);
-        return doc as dynamic ?? (dynamic?)doc;
+        return doc;
     }
 
-    private static void RenameIfPossible(object? doc, string name)
+    private static void RenameIfPossible(ModelDoc2? doc, string name)
     {
-        if (doc is null || doc is DBNull || string.IsNullOrWhiteSpace(name))
+        if (doc is null || string.IsNullOrWhiteSpace(name))
         {
             return;
         }
 
-        try
-        {
-            dynamic model = doc;
-            model.SetTitle2(name);
-        }
-        catch
-        {
-            /* title may require save */
-        }
+        try { doc.SetTitle2(name); } catch { /* requires save on some versions */ }
     }
 
-    private void ApplyVariables(dynamic model, List<CadVariable> variables)
+    private void ApplyVariables(ModelDoc2 model, List<CadVariable> variables)
     {
-        if (variables.Count == 0)
-        {
-            return;
-        }
-
+        if (variables.Count == 0) return;
         try
         {
-            dynamic eq = model.GetEquationMgr();
+            var eq = (IEquationMgr)model.GetEquationMgr();
             foreach (var v in variables)
             {
-                if (string.IsNullOrWhiteSpace(v.Name))
-                {
-                    continue;
-                }
-
+                if (string.IsNullOrWhiteSpace(v.Name)) continue;
                 var expr = $"\"{v.Name}\" = {v.Value.ToString(CultureInfo.InvariantCulture)}";
                 try
                 {
@@ -269,31 +228,22 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void ApplyConfigurations(dynamic model, List<CadConfiguration> configs)
+    private void ApplyConfigurations(ModelDoc2 model, List<CadConfiguration> configs)
     {
         foreach (var cfg in configs)
         {
-            if (string.IsNullOrWhiteSpace(cfg.Name))
-            {
-                continue;
-            }
-
+            if (string.IsNullOrWhiteSpace(cfg.Name)) continue;
             try
             {
-                var ok = model.AddConfiguration3(cfg.Name, "", "", 0);
-                if (ok is null || ok is DBNull)
-                {
-                    model.AddConfiguration2(cfg.Name, "", "", 0);
-                }
-
-                Step("AddConfiguration2", true, cfg.Name);
+                var added = model.AddConfiguration3(cfg.Name, "", "", (int)swConfigurationOptions2_e.swConfigOption_DontActivate);
+                Step("AddConfiguration3", added is not null, cfg.Name);
             }
             catch (Exception ex)
             {
                 try
                 {
-                    model.AddConfiguration(cfg.Name, "", "");
-                    Step("AddConfiguration", true, cfg.Name);
+                    model.AddConfiguration3(cfg.Name, "", "", 0);
+                    Step("AddConfiguration3", true, cfg.Name);
                 }
                 catch
                 {
@@ -303,58 +253,29 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void RunOperation(dynamic swApp, dynamic model, CadOperation op, string units)
+    private void RunOperation(ModelDoc2 model, CadOperation op, string units)
     {
-        var type = (op.Type ?? "").Trim().ToLowerInvariant();
-        switch (type)
+        switch ((op.Type ?? "").Trim().ToLowerInvariant())
         {
-            case "sketch":
-                DoSketch(model, op, units);
-                break;
-            case "extrude":
-                DoExtrude(model, op, units, cut: false);
-                break;
-            case "cut":
-                DoExtrude(model, op, units, cut: true);
-                break;
-            case "revolve":
-                DoRevolve(model, op);
-                break;
-            case "hole":
-                DoHole(model, op, units);
-                break;
-            case "fillet":
-                DoFillet(model, op, units);
-                break;
-            case "chamfer":
-                DoChamfer(model, op, units);
-                break;
-            case "shell":
-                DoShell(model, op, units);
-                break;
-            case "pattern":
-                DoPattern(model, op, units);
-                break;
-            case "component":
-                DoComponent(model, op, units);
-                break;
-            case "mate":
-                DoMate(model, op, units);
-                break;
+            case "sketch": DoSketch(model, op, units); break;
+            case "extrude": DoExtrude(model, op, units, cut: false); break;
+            case "cut": DoExtrude(model, op, units, cut: true); break;
+            case "revolve": DoRevolve(model, op); break;
+            case "hole": DoHole(model, op, units); break;
+            case "fillet": DoFillet(model, op, units); break;
+            case "chamfer": DoChamfer(model, op, units); break;
+            case "shell": DoShell(model, op, units); break;
+            case "pattern": DoPattern(model, op, units); break;
+            case "component": DoComponent(model, op, units); break;
+            case "mate": DoMate(model, op, units); break;
             case "drawingview":
-            case "drawing_view":
-                DoDrawingView(model, op);
-                break;
-            case "annotation":
-                DoAnnotation(model, op);
-                break;
-            default:
-                Step(op.Type, false, "Tipo operazione non supportato");
-                break;
+            case "drawing_view": DoDrawingView(model, op); break;
+            case "annotation": DoAnnotation(model, op); break;
+            default: Step(op.Type ?? "op", false, "Tipo operazione non supportato"); break;
         }
     }
 
-    private void DoSketch(dynamic model, CadOperation op, string units)
+    private void DoSketch(ModelDoc2 model, CadOperation op, string units)
     {
         var plane = op.Str("plane", "Top");
         if (!SelectPlane(model, plane))
@@ -363,9 +284,9 @@ internal sealed class PayloadExecutor
             return;
         }
 
-        dynamic sketchMgr = model.SketchManager;
+        var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
-        TrySet(sketchMgr, "AddToDB", true);
+        try { sketchMgr.AddToDB = true; } catch { /* ignore */ }
 
         var contours = op.Field("contours");
         var n = 0;
@@ -373,7 +294,7 @@ internal sealed class PayloadExecutor
         {
             foreach (var c in contours.Value.EnumerateArray())
             {
-                n += DrawContour(sketchMgr, c, units) ? 1 : 0;
+                if (DrawContour(sketchMgr, c, units)) n++;
             }
         }
 
@@ -382,7 +303,7 @@ internal sealed class PayloadExecutor
         Step("SketchManager", true, $"{n} contorni su {plane}");
     }
 
-    private bool DrawContour(dynamic sketchMgr, JsonElement c, string units)
+    private bool DrawContour(ISketchManager sketchMgr, JsonElement c, string units)
     {
         var kind = c.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "";
         try
@@ -395,11 +316,7 @@ internal sealed class PayloadExecutor
                     var cy = Len(c, "cy", units);
                     var w = Len(c, "width", units);
                     var h = Len(c, "height", units);
-                    var x1 = cx - w / 2;
-                    var y1 = cy - h / 2;
-                    var x2 = cx + w / 2;
-                    var y2 = cy + h / 2;
-                    sketchMgr.CreateCornerRectangle(x1, y1, 0, x2, y2, 0);
+                    sketchMgr.CreateCornerRectangle(cx - w / 2, cy - h / 2, 0, cx + w / 2, cy + h / 2, 0);
                     return true;
                 }
                 case "circle":
@@ -410,29 +327,18 @@ internal sealed class PayloadExecutor
                     var r = c.TryGetProperty("radius", out var rj) && rj.ValueKind == JsonValueKind.Number
                         ? ToMeters(rj.GetDouble(), units)
                         : d / 2;
-                    try
-                    {
-                        sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
-                    }
-                    catch
-                    {
-                        sketchMgr.CreateCircle(cx, cy, 0, cx + r, cy, 0);
-                    }
-
+                    sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
                     return true;
                 }
                 case "line":
                 {
-                    var x1 = Len(c, "x1", units);
-                    var y1 = Len(c, "y1", units);
-                    var x2 = Len(c, "x2", units);
-                    var y2 = Len(c, "y2", units);
-                    var line = sketchMgr.CreateLine(x1, y1, 0, x2, y2, 0);
+                    var line = (ISketchSegment)sketchMgr.CreateLine(
+                        Len(c, "x1", units), Len(c, "y1", units), 0,
+                        Len(c, "x2", units), Len(c, "y2", units), 0);
                     if (c.TryGetProperty("construction", out var cons) && cons.ValueKind == JsonValueKind.True)
                     {
                         try { line.ConstructionGeometry = true; } catch { /* ignore */ }
                     }
-
                     return true;
                 }
                 default:
@@ -446,7 +352,7 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void DoExtrude(dynamic model, CadOperation op, string units, bool cut)
+    private void DoExtrude(ModelDoc2 model, CadOperation op, string units, bool cut)
     {
         var sketchId = op.Str("sketch");
         if (!string.IsNullOrEmpty(sketchId) && _created.TryGetValue(sketchId, out var sketchName))
@@ -454,75 +360,67 @@ internal sealed class PayloadExecutor
             SelectFeature(model, sketchName);
         }
 
-        dynamic featMgr = model.FeatureManager;
+        var featMgr = (IFeatureManager)model.FeatureManager;
         var depth = ToMeters(op.Num("depth", 10), units);
         var flip = op.Flag("flip");
         var merge = op.Flag("merge", true);
         var throughAll = op.Flag("throughAll");
-        var t1 = throughAll ? SwEndCondThroughAll : SwEndCondBlind;
+        var t1 = throughAll
+            ? (int)swEndConditions_e.swEndCondThroughAll
+            : (int)swEndConditions_e.swEndCondBlind;
 
-        object? feat = null;
-        var api = cut ? "FeatureCut" : "FeatureExtrusion";
+        Feature? feat;
         try
         {
             if (cut)
             {
-                try
+                feat = featMgr.FeatureCut3(
+                    true, flip, true, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
+                    false, false, false, false, 0.0, 0.0,
+                    false, false, false, false,
+                    false, true, true, true, true, false,
+                    (int)swStartConditions_e.swStartSketchPlane, 0, false);
+                if (feat is null)
                 {
-                    feat = featMgr.FeatureCut4(
-                        true, flip, false, t1, SwEndCondBlind, depth, 0,
+                    feat = featMgr.FeatureCut3(
+                        true, flip, false, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
                         false, false, false, false, 0.0, 0.0,
                         false, false, false, false,
                         false, true, true, true, true, false,
-                        0, 0, false, false);
+                        (int)swStartConditions_e.swStartSketchPlane, 0, false);
                 }
-                catch
+                if (feat is null)
                 {
-                    feat = featMgr.FeatureCut3(
-                        true, flip, false, t1, SwEndCondBlind, depth, 0,
+                    feat = featMgr.FeatureCut4(
+                        true, flip, true, t1, (int)swEndConditions_e.swEndCondBlind, Math.Max(depth, 0.01), 0,
                         false, false, false, false, 0.0, 0.0,
                         false, false, false, false,
-                        false, true, true, true, true, false);
+                        false, true, true, true, true, false,
+                        (int)swStartConditions_e.swStartSketchPlane, 0, false, false);
                 }
             }
             else
             {
-                try
-                {
-                    feat = featMgr.FeatureExtrusion3(
-                        true, false, flip, t1, SwEndCondBlind, depth, 0,
-                        false, false, false, false, 0.0, 0.0,
-                        false, false, false, false,
-                        merge, true, true, 0, 0.0, false,
-                        false, false, false);
-                }
-                catch
-                {
-                    feat = featMgr.FeatureExtrusion2(
-                        true, false, flip, t1, SwEndCondBlind, depth, 0,
-                        false, false, false, false, 0.0, 0.0,
-                        false, false, false, false,
-                        merge, true, true, 0, 0.0, false);
-                }
+                feat = featMgr.FeatureExtrusion3(
+                    true, false, flip, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
+                    false, false, false, false, 0.0, 0.0,
+                    false, false, false, false,
+                    merge, true, true,
+                    (int)swStartConditions_e.swStartSketchPlane, 0.0, false);
             }
         }
         catch (Exception ex)
         {
-            Step(api, false, FormatEx(ex));
+            Step(cut ? "FeatureManager.FeatureCut" : "FeatureManager.FeatureExtrusion", false, FormatEx(ex));
             return;
         }
 
-        var ok = feat is not null && feat is not DBNull;
-        if (ok)
-        {
-            RememberFeature(op.Id, op.Name, feat);
-        }
-
-        Step(cut ? "FeatureManager.FeatureCut" : "FeatureManager.FeatureExtrusion", ok,
+        if (feat is not null) RememberFeature(op.Id, op.Name, feat);
+        Step(cut ? "FeatureManager.FeatureCut" : "FeatureManager.FeatureExtrusion", feat is not null,
             throughAll ? "throughAll" : $"depth={op.Num("depth")} {units}");
     }
 
-    private void DoRevolve(dynamic model, CadOperation op)
+    private void DoRevolve(ModelDoc2 model, CadOperation op)
     {
         var sketchId = op.Str("sketch");
         if (!string.IsNullOrEmpty(sketchId) && _created.TryGetValue(sketchId, out var sketchName))
@@ -533,12 +431,12 @@ internal sealed class PayloadExecutor
         var angle = op.Num("angle", 360) * Math.PI / 180.0;
         try
         {
-            dynamic featMgr = model.FeatureManager;
-            object feat = featMgr.FeatureRevolve2(
-                true, true, false, false, 0, 0,
+            var featMgr = (IFeatureManager)model.FeatureManager;
+            var feat = featMgr.FeatureRevolve2(
+                true, true, false, false, false, false, 0, 0,
                 angle, 0, false, false, 0, 0,
-                0, 0, 0, 0, true, true, true);
-            RememberFeature(op.Id, op.Name, feat);
+                0, 0, 0, true, true, true);
+            if (feat is not null) RememberFeature(op.Id, op.Name, feat);
             Step("FeatureManager.FeatureRevolve2", feat is not null, $"angle={op.Num("angle", 360)}°");
         }
         catch (Exception ex)
@@ -547,7 +445,7 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void DoHole(dynamic model, CadOperation op, string units)
+    private void DoHole(ModelDoc2 model, CadOperation op, string units)
     {
         var plane = op.Str("plane", "Top");
         if (!SelectPlane(model, plane))
@@ -556,21 +454,13 @@ internal sealed class PayloadExecutor
             return;
         }
 
-        dynamic sketchMgr = model.SketchManager;
+        var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
-        TrySet(sketchMgr, "AddToDB", true);
+        try { sketchMgr.AddToDB = true; } catch { /* ignore */ }
         var cx = ToMeters(op.Num("cx"), units);
         var cy = ToMeters(op.Num("cy"), units);
         var r = ToMeters(op.Num("diameter", 6), units) / 2;
-        try
-        {
-            sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
-        }
-        catch
-        {
-            sketchMgr.CreateCircle(cx, cy, 0, cx + r, cy, 0);
-        }
-
+        sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
         sketchMgr.InsertSketch(false);
 
         var cutOp = new CadOperation
@@ -587,30 +477,18 @@ internal sealed class PayloadExecutor
         DoExtrude(model, cutOp, units, cut: true);
     }
 
-    private void DoFillet(dynamic model, CadOperation op, string units)
+    private void DoFillet(ModelDoc2 model, CadOperation op, string units)
     {
         var radius = ToMeters(op.Num("radius", 1), units);
-        if (op.Flag("allEdges", true))
-        {
-            SelectAllBodyEdges(model);
-        }
-
+        if (op.Flag("allEdges", true)) SelectAllBodyEdges(model);
         try
         {
-            dynamic featMgr = model.FeatureManager;
-            object? feat = null;
-            try
-            {
-                feat = featMgr.FeatureFillet3(radius, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-            }
-            catch
-            {
-                feat = featMgr.FeatureFillet(radius, false, 0, 0, 0, 0, 0, 0);
-            }
-
-            RememberFeature(op.Id, op.Name, feat);
-            Step("FeatureManager.FeatureFillet", feat is not null && feat is not DBNull,
-                $"R={op.Num("radius")} {units}");
+            var featMgr = (IFeatureManager)model.FeatureManager;
+            var feat = featMgr.FeatureFillet3(
+                0, radius, 0, 0, 0, 0, 0,
+                null, null, null, null, null, null, null) as Feature;
+            if (feat is not null) RememberFeature(op.Id, op.Name, feat);
+            Step("FeatureManager.FeatureFillet", feat is not null, $"R={op.Num("radius")} {units}");
         }
         catch (Exception ex)
         {
@@ -618,19 +496,15 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void DoChamfer(dynamic model, CadOperation op, string units)
+    private void DoChamfer(ModelDoc2 model, CadOperation op, string units)
     {
         var dist = ToMeters(op.Num("distance", 1), units);
-        if (op.Flag("allEdges", true))
-        {
-            SelectAllBodyEdges(model);
-        }
-
+        if (op.Flag("allEdges", true)) SelectAllBodyEdges(model);
         try
         {
-            dynamic featMgr = model.FeatureManager;
-            object feat = featMgr.InsertFeatureChamfer(1, 1, dist, 0.785398163, 0, 0, 0, 0);
-            RememberFeature(op.Id, op.Name, feat);
+            var featMgr = (IFeatureManager)model.FeatureManager;
+            var feat = featMgr.InsertFeatureChamfer(1, 1, dist, 0.785398163, 0, 0, 0, 0) as Feature;
+            if (feat is not null) RememberFeature(op.Id, op.Name, feat);
             Step("FeatureManager.InsertFeatureChamfer", feat is not null, $"d={op.Num("distance")} {units}");
         }
         catch (Exception ex)
@@ -639,50 +513,37 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void DoShell(dynamic model, CadOperation op, string units)
+    private void DoShell(ModelDoc2 model, CadOperation op, string units)
     {
-        var thickness = ToMeters(op.Num("thickness", 1), units);
-        try
-        {
-            dynamic featMgr = model.FeatureManager;
-            object feat = featMgr.InsertShell(thickness, true, false);
-            RememberFeature(op.Id, op.Name, feat);
-            Step("FeatureManager.InsertShell", feat is not null, $"t={op.Num("thickness")} {units}");
-        }
-        catch (Exception ex)
-        {
-            Step("FeatureManager.InsertShell", false, FormatEx(ex));
-        }
+        Step("FeatureManager.InsertShell", false,
+            $"InsertShell non esposto in questa interop (t={op.Num("thickness")} {units})");
     }
 
-    private void DoPattern(dynamic model, CadOperation op, string units)
+    private void DoPattern(ModelDoc2 model, CadOperation op, string units)
     {
         var featureId = op.Str("feature");
-        if (_created.TryGetValue(featureId, out var fname))
-        {
-            SelectFeature(model, fname);
-        }
-
+        if (_created.TryGetValue(featureId, out var fname)) SelectFeature(model, fname);
         var kind = op.Str("kind", "linear");
         var count = (int)op.Num("count", 2);
         try
         {
-            dynamic featMgr = model.FeatureManager;
+            var featMgr = (IFeatureManager)model.FeatureManager;
+            Feature? feat;
             if (kind == "circular")
             {
                 var angle = op.Num("angle", 360) * Math.PI / 180.0;
-                object feat = featMgr.FeatureCircularPattern4(count, angle, false, "NULL", false, false, false);
-                RememberFeature(op.Id, op.Name, feat);
+                feat = featMgr.FeatureCircularPattern4(count, angle, false, "NULL", false, false, false) as Feature;
                 Step("FeatureManager.FeatureCircularPattern4", feat is not null, $"n={count}");
             }
             else
             {
                 var spacing = ToMeters(op.Num("spacing", 20), units);
-                object feat = featMgr.FeatureLinearPattern4(
-                    count, spacing, 1, 0, false, false, "NULL", "NULL", false, false, false, false, false, false, true, true, false, false);
-                RememberFeature(op.Id, op.Name, feat);
+                feat = featMgr.FeatureLinearPattern4(
+                    count, spacing, 1, 0, false, false, "NULL", "NULL",
+                    false, false, false, false, false, false, true, true, false, false, 0, 0);
                 Step("FeatureManager.FeatureLinearPattern4", feat is not null, $"n={count}");
             }
+            if (feat is not null) RememberFeature(op.Id, op.Name, feat);
         }
         catch (Exception ex)
         {
@@ -690,22 +551,22 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void DoComponent(dynamic model, CadOperation op, string units)
+    private void DoComponent(ModelDoc2 model, CadOperation op, string units)
     {
+        if (model is not IAssemblyDoc assy)
+        {
+            Step("AddComponent5", false, "Il documento non è un assieme");
+            return;
+        }
+
         var path = op.Str("path");
         var x = ToMeters(op.Num("x"), units);
         var y = ToMeters(op.Num("y"), units);
         var z = ToMeters(op.Num("z"), units);
         try
         {
-            object comp = model.AddComponent5(path, 0, "", false, "", x, y, z);
-            var ok = comp is not null && comp is not DBNull;
-            if (ok)
-            {
-                RememberFeature(op.Id, op.Name ?? System.IO.Path.GetFileNameWithoutExtension(path), comp);
-            }
-
-            Step("AddComponent5", ok, path);
+            var comp = assy.AddComponent5(path, 0, "", false, "", x, y, z);
+            Step("AddComponent5", comp is not null, path);
         }
         catch (Exception ex)
         {
@@ -713,23 +574,28 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void DoMate(dynamic model, CadOperation op, string units)
+    private void DoMate(ModelDoc2 model, CadOperation op, string units)
     {
+        if (model is not IAssemblyDoc assy)
+        {
+            Step("AddMate5", false, "Il documento non è un assieme");
+            return;
+        }
+
         var mateType = op.Str("mateType", "coincident").ToLowerInvariant() switch
         {
-            "concentric" => SwMateConcentric,
-            "parallel" => SwMateParallel,
-            "perpendicular" => SwMatePerpendicular,
-            "distance" => SwMateDistance,
-            _ => SwMateCoincident,
+            "concentric" => (int)swMateType_e.swMateCONCENTRIC,
+            "parallel" => (int)swMateType_e.swMatePARALLEL,
+            "perpendicular" => (int)swMateType_e.swMatePERPENDICULAR,
+            "distance" => (int)swMateType_e.swMateDISTANCE,
+            _ => (int)swMateType_e.swMateCOINCIDENT,
         };
         var dist = ToMeters(op.Num("distance"), units);
         try
         {
-            object mate = model.AddMate5(mateType, 0, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, 0);
-            var ok = mate is not null && mate is not DBNull;
-            RememberFeature(op.Id, op.Name, mate);
-            Step("AddMate5", ok, op.Str("mateType"));
+            var errors = 0;
+            var mate = assy.AddMate5(mateType, 0, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
+            Step("AddMate5", mate is not null && errors == 0, $"{op.Str("mateType")} errors={errors}");
         }
         catch (Exception ex)
         {
@@ -737,36 +603,29 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void DoDrawingView(dynamic model, CadOperation op)
+    private void DoDrawingView(ModelDoc2 model, CadOperation op)
     {
-        var view = op.Str("view", "*Isometric");
-        if (!view.StartsWith('*'))
+        if (model is not IDrawingDoc drawing)
         {
-            view = "*" + view;
+            Step("CreateDrawViewFromModelView", false, "Il documento non è una tavola");
+            return;
         }
 
+        var view = op.Str("view", "*Isometric");
+        if (!view.StartsWith('*')) view = "*" + view;
         var x = op.Num("x", 0.15);
         var y = op.Num("y", 0.15);
         var modelPath = op.Str("model");
         try
         {
-            object v;
-            if (!string.IsNullOrEmpty(modelPath))
+            var v = string.IsNullOrEmpty(modelPath)
+                ? drawing.CreateDrawViewFromModelView3("", view, x, y, 0)
+                : drawing.CreateDrawViewFromModelView3(modelPath, view, x, y, 0);
+            if (v is SolidWorks.Interop.sldworks.View dv && op.Num("scale", 0) > 0)
             {
-                v = model.CreateDrawViewFromModelView3(modelPath, view, x, y, 0);
+                try { dv.ScaleDecimal = op.Num("scale"); } catch { /* ignore */ }
             }
-            else
-            {
-                v = model.CreateDrawViewFromModelView2(view, x, y, 0);
-            }
-
-            var ok = v is not null && v is not DBNull;
-            if (ok && op.Num("scale", 0) > 0)
-            {
-                try { ((dynamic)v).ScaleDecimal = op.Num("scale"); } catch { /* ignore */ }
-            }
-
-            Step("CreateDrawViewFromModelView", ok, view);
+            Step("CreateDrawViewFromModelView", v is not null, view);
         }
         catch (Exception ex)
         {
@@ -774,16 +633,21 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void DoAnnotation(dynamic model, CadOperation op)
+    private void DoAnnotation(ModelDoc2 model, CadOperation op)
     {
         var text = op.Str("text");
         var x = op.Num("x", 0.01);
         var y = op.Num("y", 0.01);
         try
         {
-            dynamic notes = model.InsertNote(text);
-            try { notes.GetAnnotation().SetPosition2(x, y, 0); } catch { /* ignore */ }
-            Step("InsertNote", notes is not null, text);
+            var note = model.InsertNote(text) as Note;
+            try
+            {
+                var ann = note?.GetAnnotation() as Annotation;
+                ann?.SetPosition2(x, y, 0);
+            }
+            catch { /* ignore */ }
+            Step("InsertNote", note is not null, text);
         }
         catch (Exception ex)
         {
@@ -791,7 +655,7 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private bool SelectPlane(dynamic model, string plane)
+    private bool SelectPlane(ModelDoc2 model, string plane)
     {
         var aliases = plane.ToLowerInvariant() switch
         {
@@ -803,15 +667,14 @@ internal sealed class PayloadExecutor
         var feat = FeatureTreeReader.FindByTypeAndAlias(model, "RefPlane", aliases);
         if (feat is null)
         {
-            var tree = FeatureTreeReader.Read((object)model);
-            var all = tree.Where(f => f.TypeName == "RefPlane").ToList();
+            var all = FeatureTreeReader.Read(model).Where(f => f.TypeName == "RefPlane").ToList();
             var wanted = plane.ToLowerInvariant();
             var match = all.FirstOrDefault(f =>
                 f.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase) ||
                 aliases.Any(a => f.Name.Equals(a, StringComparison.OrdinalIgnoreCase)));
             if (match is not null)
             {
-                feat = model.FeatureByPositionReverse(match.Index);
+                feat = (Feature)model.FeatureByPositionReverse(match.Index);
             }
             else if (all.Count > 0)
             {
@@ -822,75 +685,37 @@ internal sealed class PayloadExecutor
                         : all.ElementAtOrDefault(Math.Max(0, all.Count - 2));
                 if (pick is not null)
                 {
-                    feat = model.FeatureByPositionReverse(pick.Index);
+                    feat = (Feature)model.FeatureByPositionReverse(pick.Index);
                 }
             }
         }
 
-        if (feat is null)
-        {
-            return false;
-        }
-
-        try
-        {
-            return (bool)((dynamic)feat).Select2(false, 0);
-        }
-        catch
-        {
-            return false;
-        }
+        return feat is not null && feat.Select2(false, 0);
     }
 
-    private static bool SelectFeature(dynamic model, string name)
+    private static bool SelectFeature(ModelDoc2 model, string name)
     {
         var feat = FeatureTreeReader.FindByName(model, name);
-        if (feat is null)
-        {
-            return false;
-        }
-
-        try
-        {
-            return (bool)((dynamic)feat).Select2(false, 0);
-        }
-        catch
-        {
-            return false;
-        }
+        return feat is not null && feat.Select2(false, 0);
     }
 
-    private static void SelectAllBodyEdges(dynamic model)
+    private static void SelectAllBodyEdges(ModelDoc2 model)
     {
         try
         {
-            dynamic part = model;
-            object bodiesObj = part.GetBodies2(0, true);
-            if (bodiesObj is not object[] bodies)
-            {
-                return;
-            }
-
+            if (model is not IPartDoc part) return;
+            var bodies = part.GetBodies2((int)swBodyType_e.swSolidBody, true) as object[];
+            if (bodies is null) return;
             var first = true;
-            foreach (dynamic body in bodies)
+            foreach (Body2 body in bodies)
             {
-                object facesObj = body.GetFaces();
-                if (facesObj is not object[] faces)
+                var edges = body.GetEdges() as object[];
+                if (edges is null) continue;
+                foreach (var edgeObj in edges)
                 {
-                    continue;
-                }
-
-                foreach (dynamic face in faces)
-                {
-                    object edgesObj = face.GetEdges();
-                    if (edgesObj is not object[] edges)
+                    if (edgeObj is IEntity ent)
                     {
-                        continue;
-                    }
-
-                    foreach (dynamic edge in edges)
-                    {
-                        edge.Select4(!first, null);
+                        ent.Select4(!first, null);
                         first = false;
                     }
                 }
@@ -902,130 +727,46 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private void RememberLatest(dynamic model, string id, string? name)
+    private void RememberLatest(ModelDoc2 model, string id, string? name)
     {
         try
         {
-            dynamic feat = model.FeatureByPositionReverse(0);
+            var feat = (Feature)model.FeatureByPositionReverse(0);
             RememberFeature(id, name, feat);
         }
         catch
         {
-            if (!string.IsNullOrEmpty(id))
-            {
-                _created[id] = name ?? id;
-            }
+            if (!string.IsNullOrEmpty(id)) _created[id] = name ?? id;
         }
     }
 
-    private void RememberFeature(string id, string? name, object? feat)
+    private void RememberFeature(string id, string? name, Feature? feat)
     {
-        if (feat is null || feat is DBNull)
-        {
-            return;
-        }
-
-        try
-        {
-            var featName = (string)((dynamic)feat).Name;
-            if (!string.IsNullOrEmpty(id))
-            {
-                _created[id] = featName;
-            }
-
-            if (!string.IsNullOrEmpty(name))
-            {
-                _created[name] = featName;
-            }
-        }
-        catch
-        {
-            if (!string.IsNullOrEmpty(id))
-            {
-                _created[id] = name ?? id;
-            }
-        }
+        if (feat is null) return;
+        var featName = feat.Name;
+        if (!string.IsNullOrEmpty(id)) _created[id] = featName;
+        if (!string.IsNullOrEmpty(name)) _created[name] = featName;
     }
 
     private static double Len(JsonElement c, string name, string units)
     {
-        if (!c.TryGetProperty(name, out var el))
-        {
-            return 0;
-        }
-
-        var v = el.ValueKind == JsonValueKind.Number ? el.GetDouble() : 0;
-        return ToMeters(v, units);
+        if (!c.TryGetProperty(name, out var el) || el.ValueKind != JsonValueKind.Number) return 0;
+        return ToMeters(el.GetDouble(), units);
     }
 
-    private static double ToMeters(double value, string units)
-    {
-        return units.Equals("m", StringComparison.OrdinalIgnoreCase) ? value : value / 1000.0;
-    }
+    private static double ToMeters(double value, string units) =>
+        units.Equals("m", StringComparison.OrdinalIgnoreCase) ? value : value / 1000.0;
 
     private void Step(string op, bool ok, string detail)
     {
         _steps.Add(new ExecStep { Op = op, Ok = ok, Detail = detail });
-        var mark = ok ? "OK" : "FAIL";
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {mark} {op} — {detail}");
-    }
-
-    private static void TrySet(dynamic obj, string prop, object value)
-    {
-        try { ((object)obj).GetType(); obj.GetType(); } catch { /* dynamic */ }
-        try
-        {
-            obj.GetType();
-        }
-        catch
-        {
-            /* ignore */
-        }
-
-        try
-        {
-            switch (prop)
-            {
-                case "Visible": obj.Visible = value; break;
-                case "UserControl": obj.UserControl = value; break;
-                case "UserControlBackground": obj.UserControlBackground = value; break;
-                case "CommandInProgress": obj.CommandInProgress = value; break;
-                case "AddToDB": obj.AddToDB = value; break;
-            }
-        }
-        catch
-        {
-            /* property may not exist */
-        }
-    }
-
-    private static void TryCall(dynamic obj, string method, params object[] args)
-    {
-        try
-        {
-            if (method == "SetUserPreferenceToggle" && args.Length == 2)
-            {
-                obj.SetUserPreferenceToggle(args[0], args[1]);
-            }
-        }
-        catch
-        {
-            /* ignore */
-        }
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {(ok ? "OK" : "FAIL")} {op} — {detail}");
     }
 
     internal static string FormatEx(Exception ex)
     {
-        if (ex is COMException com)
-        {
-            return $"COM 0x{com.ErrorCode:X8}: {com.Message}";
-        }
-
-        if (ex.InnerException is COMException inner)
-        {
-            return $"COM 0x{inner.ErrorCode:X8}: {inner.Message}";
-        }
-
+        if (ex is COMException com) return $"COM 0x{com.ErrorCode:X8}: {com.Message}";
+        if (ex.InnerException is COMException inner) return $"COM 0x{inner.ErrorCode:X8}: {inner.Message}";
         return $"{ex.GetType().Name}: {ex.Message}";
     }
 }

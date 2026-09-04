@@ -51,3 +51,6 @@ bridge/obj/
 # SolidWorks autosaves
 ~$*
 *.SWLock
+
+tmp-prompt.json
+bridge/tmp-*.txt

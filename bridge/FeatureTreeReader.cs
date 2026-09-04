@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using SolidWorks.Interop.sldworks;
 
 namespace SolidWorksBridge;
 
@@ -8,74 +8,43 @@ internal static class FeatureTreeReader
     /// Walk the feature tree with FeatureByPositionReverse + GetTypeName2.
     /// Never SelectByID2.
     /// </summary>
-    public static List<FeatureInfo> Read(dynamic model)
+    public static List<FeatureInfo> Read(object? modelObj)
     {
         var list = new List<FeatureInfo>();
-        if (model is null)
+        if (modelObj is not ModelDoc2 model)
         {
             return list;
         }
 
-        int count = 0;
+        var count = 256;
         try
         {
-            count = (int)model.GetFeatureCount();
+            count = model.GetFeatureCount();
         }
         catch
         {
-            try
-            {
-                count = (int)model.GetFeatureCount(0);
-            }
-            catch
-            {
-                count = 256;
-            }
+            /* keep cap */
         }
 
         for (var i = 0; i < count; i++)
         {
-            object? featObj = null;
+            Feature? feat = null;
             try
             {
-                featObj = model.FeatureByPositionReverse(i);
-                if (featObj is null || featObj is DBNull)
+                feat = (Feature)model.FeatureByPositionReverse(i);
+                if (feat is null)
                 {
                     break;
                 }
 
-                dynamic feat = featObj;
-                string name;
                 string typeName;
-                try
-                {
-                    name = (string)feat.Name;
-                }
-                catch
-                {
-                    name = $"#{i}";
-                }
-
-                try
-                {
-                    typeName = (string)feat.GetTypeName2();
-                }
-                catch
-                {
-                    try
-                    {
-                        typeName = (string)feat.GetTypeName();
-                    }
-                    catch
-                    {
-                        typeName = "Unknown";
-                    }
-                }
+                try { typeName = feat.GetTypeName2(); }
+                catch { typeName = feat.GetTypeName(); }
 
                 list.Add(new FeatureInfo
                 {
                     Index = i,
-                    Name = name,
+                    Name = feat.Name,
                     TypeName = typeName,
                 });
             }
@@ -83,19 +52,12 @@ internal static class FeatureTreeReader
             {
                 break;
             }
-            finally
-            {
-                if (featObj is not null && Marshal.IsComObject(featObj))
-                {
-                    try { Marshal.ReleaseComObject(featObj); } catch { /* ignore */ }
-                }
-            }
         }
 
         return list;
     }
 
-    public static object? FindByTypeAndAlias(dynamic model, string typeName, params string[] aliases)
+    public static Feature? FindByTypeAndAlias(ModelDoc2 model, string typeName, params string[] aliases)
     {
         foreach (var info in Read(model))
         {
@@ -108,7 +70,7 @@ internal static class FeatureTreeReader
             {
                 if (string.Equals(info.Name, alias, StringComparison.OrdinalIgnoreCase))
                 {
-                    return model.FeatureByPositionReverse(info.Index);
+                    return (Feature)model.FeatureByPositionReverse(info.Index);
                 }
             }
         }
@@ -116,13 +78,13 @@ internal static class FeatureTreeReader
         return null;
     }
 
-    public static object? FindByName(dynamic model, string name)
+    public static Feature? FindByName(ModelDoc2 model, string name)
     {
         foreach (var info in Read(model))
         {
             if (string.Equals(info.Name, name, StringComparison.OrdinalIgnoreCase))
             {
-                return model.FeatureByPositionReverse(info.Index);
+                return (Feature)model.FeatureByPositionReverse(info.Index);
             }
         }
 
