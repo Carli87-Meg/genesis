@@ -223,12 +223,9 @@ internal static class ComActive
                     if (sw is not null) return sw;
                     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] HWND 0x{hwnd.ToInt64():X} IUnknown type={unk.GetType().FullName}");
                 }
-                else
-                {
                 else if (ClassName(hwnd).StartsWith("Afx", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] HWND 0x{hwnd.ToInt64():X} {ClassName(hwnd)} IUnknown hr=0x{hr:X8}");
-                }
                 }
             }
             catch (Exception ex)
