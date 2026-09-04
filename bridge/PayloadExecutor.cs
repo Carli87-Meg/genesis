@@ -10,6 +10,7 @@ internal sealed class PayloadExecutor
 {
     private readonly List<ExecStep> _steps = [];
     private readonly Dictionary<string, string> _created = new(StringComparer.OrdinalIgnoreCase);
+    private ISldWorks? _sw;
 
     public (List<ExecStep> Steps, List<FeatureInfo> Features, string? DocTitle, int? DocType, string? SavedPath, string? SnapshotPath) Execute(
         ISldWorks swApp,
@@ -17,6 +18,7 @@ internal sealed class PayloadExecutor
     {
         _steps.Clear();
         _created.Clear();
+        _sw = swApp;
 
         swApp.Visible = true;
         try { swApp.UserControl = true; } catch { /* ignore */ }
@@ -569,10 +571,48 @@ internal sealed class PayloadExecutor
         }
 
         var path = op.Str("path");
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            Step("AddComponent5", false, "path mancante");
+            return;
+        }
+
+        var full = Path.GetFullPath(path);
+        if (!File.Exists(full))
         {
             Step("AddComponent5", false, $"File non trovato: {path}");
             return;
+        }
+
+        if (_sw is not null)
+        {
+            var oErr = 0;
+            var oWarn = 0;
+            try
+            {
+                var opened = _sw.OpenDoc6(
+                    full,
+                    (int)swDocumentTypes_e.swDocPART,
+                    (int)swOpenDocOptions_e.swOpenDocOptions_Silent,
+                    "",
+                    ref oErr,
+                    ref oWarn);
+                Step("OpenDoc6", opened is not null, $"{Path.GetFileName(full)} errors={oErr}");
+            }
+            catch (Exception ex)
+            {
+                Step("OpenDoc6", false, FormatEx(ex));
+            }
+
+            try
+            {
+                var aErr = 0;
+                _sw.ActivateDoc3(model.GetTitle(), false, 0, ref aErr);
+            }
+            catch
+            {
+                try { _sw.ActivateDoc(model.GetTitle()); } catch { /* ignore */ }
+            }
         }
 
         var x = ToMeters(op.Num("x"), units);
@@ -580,23 +620,27 @@ internal sealed class PayloadExecutor
         var z = ToMeters(op.Num("z"), units);
         try
         {
-            var compObj = assy.AddComponent5(
-                path,
+            object? compObj = assy.AddComponent5(
+                full,
                 (int)swAddComponentConfigOptions_e.swAddComponentConfigOptions_CurrentSelectedConfig,
                 "",
                 false,
                 "",
                 x, y, z);
+            if (compObj is not Component2)
+            {
+                try { compObj = assy.AddComponent(full, x, y, z); } catch { /* next */ }
+            }
             if (compObj is not Component2 comp)
             {
-                Step("AddComponent5", false, path);
+                Step("AddComponent5", false, full);
                 return;
             }
 
             var inst = comp.Name2;
             if (!string.IsNullOrEmpty(op.Id)) _created[op.Id] = inst;
             if (!string.IsNullOrEmpty(op.Name)) _created[op.Name] = inst;
-            _created[Path.GetFileNameWithoutExtension(path)] = inst;
+            _created[Path.GetFileNameWithoutExtension(full)] = inst;
 
             if (op.Flag("fix"))
             {
@@ -855,6 +899,27 @@ internal sealed class PayloadExecutor
             return;
         }
 
+        modelPath = Path.GetFullPath(modelPath);
+        if (_sw is not null)
+        {
+            var oErr = 0;
+            var oWarn = 0;
+            var dtype = modelPath.EndsWith(".sldasm", StringComparison.OrdinalIgnoreCase)
+                ? (int)swDocumentTypes_e.swDocASSEMBLY
+                : (int)swDocumentTypes_e.swDocPART;
+            try
+            {
+                _sw.OpenDoc6(modelPath, dtype, (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref oErr, ref oWarn);
+            }
+            catch { /* may already be open */ }
+            try
+            {
+                var aErr = 0;
+                _sw.ActivateDoc3(model.GetTitle(), false, 0, ref aErr);
+            }
+            catch { /* ignore */ }
+        }
+
         var includeIso = op.Flag("includeIso", true);
         try
         {
@@ -944,6 +1009,13 @@ internal sealed class PayloadExecutor
         if (x > 2) x = ToMeters(x, "mm");
         if (y > 2) y = ToMeters(y, "mm");
         var modelPath = op.Str("model");
+        if (string.IsNullOrWhiteSpace(modelPath) || !File.Exists(modelPath))
+        {
+            Step("CreateDrawViewFromModelView", false, "Percorso modello mancante");
+            return;
+        }
+
+        modelPath = Path.GetFullPath(modelPath);
         try
         {
             var v = drawing.CreateDrawViewFromModelView3(modelPath, view, x, y, 0);
