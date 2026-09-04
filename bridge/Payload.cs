@@ -18,6 +18,9 @@ public sealed class DocumentSpec
     public string Type { get; set; } = "part";
     public string Name { get; set; } = "Documento";
     public bool AttachToActive { get; set; }
+    public string? SavePath { get; set; }
+    public string? SnapshotPath { get; set; }
+    public string? SnapshotView { get; set; }
 }
 
 public sealed class CadVariable
@@ -116,6 +119,8 @@ public sealed class BridgeResponse
     public string? Version { get; set; }
     public string? Document { get; set; }
     public int? DocumentType { get; set; }
+    public string? SavedPath { get; set; }
+    public string? SnapshotPath { get; set; }
     public List<ExecStep> Steps { get; set; } = [];
     public List<FeatureInfo> Features { get; set; } = [];
 }

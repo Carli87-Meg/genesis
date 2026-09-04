@@ -18,9 +18,18 @@ function plate(
   T: number,
   D: number,
   fillet?: number,
+  centerHole = false,
 ): { operations: CadOperation[]; variables: SolidWorksDocumentPayload["variables"]; summary: string } {
   const mx = L / 2 - Math.max(D, 8)
   const my = W / 2 - Math.max(D, 8)
+  const holes = centerHole
+    ? [{ kind: "circle" as const, cx: 0, cy: 0, diameter: D }]
+    : [
+        { kind: "circle" as const, cx: mx, cy: my, diameter: D },
+        { kind: "circle" as const, cx: -mx, cy: my, diameter: D },
+        { kind: "circle" as const, cx: mx, cy: -my, diameter: D },
+        { kind: "circle" as const, cx: -mx, cy: -my, diameter: D },
+      ]
   const operations: CadOperation[] = [
     {
       id: "s1",
@@ -42,12 +51,7 @@ function plate(
       type: "sketch",
       name: "SchizzoFori",
       plane: "Top",
-      contours: [
-        { kind: "circle", cx: mx, cy: my, diameter: D },
-        { kind: "circle", cx: -mx, cy: my, diameter: D },
-        { kind: "circle", cx: mx, cy: -my, diameter: D },
-        { kind: "circle", cx: -mx, cy: -my, diameter: D },
-      ],
+      contours: holes,
     },
     {
       id: "c1",
@@ -74,7 +78,37 @@ function plate(
       { name: "T", value: T },
       { name: "D", value: D },
     ],
-    summary: `Piastra ${L} × ${W} × ${T} mm, 4 fori Ø${D}${fillet ? `, raccordi R${fillet}` : ""}.`,
+    summary: centerHole
+      ? `Piastra ${L} × ${W} × ${T} mm, foro centrale Ø${D}${fillet ? `, raccordi R${fillet}` : ""}.`
+      : `Piastra ${L} × ${W} × ${T} mm, 4 fori Ø${D}${fillet ? `, raccordi R${fillet}` : ""}.`,
+  }
+}
+
+function pin(D: number, L: number) {
+  const operations: CadOperation[] = [
+    {
+      id: "s1",
+      type: "sketch",
+      name: "SchizzoPerno",
+      plane: "Top",
+      contours: [{ kind: "circle", cx: 0, cy: 0, diameter: D }],
+    },
+    {
+      id: "e1",
+      type: "extrude",
+      name: "EstrusionePerno",
+      sketch: "s1",
+      depth: L,
+      merge: true,
+    },
+  ]
+  return {
+    operations,
+    variables: [
+      { name: "D", value: D },
+      { name: "L", value: L },
+    ],
+    summary: `Perno Ø${D} mm, lunghezza ${L} mm.`,
   }
 }
 
@@ -158,17 +192,42 @@ export function interpretDemo(prompt: string): InterpretResult {
   const plateMatch = lower.match(
     /piastr[ae]|plate|lastra/,
   )
-  if (plateMatch) {
+  if (/rondella|washer/.test(lower)) {
+    const dims = [...text.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => num(m[1], 0))
+    const hole = text.match(/[Øø]\s*(\d+(?:[.,]\d+)?)/g)
+    const outer = dims[0] || 18
+    const inner = num(hole?.[1]?.replace(/[Øø]\s*/, ""), 0) || dims[1] || 8.2
+    const h = dims[2] || 2
+    const b = bushing(outer, inner, h)
+    built = { ...b, name: "Rondella", type: "part", summary: `Rondella Ø${outer}/${inner} mm, spessore ${h} mm.` }
+  } else if (/\bperno\b|\bpin\b|spine/.test(lower)) {
+    const dims = [...text.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => num(m[1], 0))
+    const hole = text.match(/[Øø]\s*(\d+(?:[.,]\d+)?)/)
+    const D = num(hole?.[1], 0) || dims[0] || 8
+    const L = dims.find((d) => d !== D) || dims[1] || 24
+    const p = pin(D, L)
+    built = { ...p, name: "Perno", type: "part" }
+  } else if (/staffa|bracket/.test(lower)) {
+    const dims = [...text.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => num(m[1], 0))
+    const L = dims[0] || 40
+    const W = dims[1] || 25
+    const T = dims[2] || 4
+    const hole = text.match(/[Øø]\s*(\d+(?:[.,]\d+)?)/)
+    const D = num(hole?.[1], 0) || 8
+    const p = plate(L, W, T, D, undefined, true)
+    built = { ...p, name: "Staffa", type: "part", summary: `Staffa ${L} × ${W} × ${T} mm, foro Ø${D}.` }
+  } else if (plateMatch) {
     const dims = [...text.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => num(m[1], 0))
     const L = dims[0] || 80
     const W = dims[1] || 50
     const T = dims[2] || 8
     const hole = text.match(/[Øø]\s*(\d+(?:[.,]\d+)?)/)
-    const D = num(hole?.[1], 0) || 6
+    const D = num(hole?.[1], 0) || (lower.includes("centrale") || lower.includes("center") ? 8 : 6)
     const fil = lower.match(/raccord[io]\s*r?\s*(\d+(?:[.,]\d+)?)|r\s*(\d+(?:[.,]\d+)?)/i)
     const fillet = num(fil?.[1] || fil?.[2], 0)
-    const p = plate(L, W, T, D, fillet || undefined)
-    built = { ...p, name: "Piastra", type: "part" }
+    const center = /centrale|center|un foro|1 foro|foro unico/.test(lower)
+    const p = plate(L, W, T, D, fillet || undefined, center)
+    built = { ...p, name: center ? "PiastraBase" : "Piastra", type: "part" }
   } else if (/albero|shaft|cilindr/.test(lower) && !/boccola/.test(lower)) {
     const dims = [...text.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => num(m[1], 0))
     const D = dims[0] || 20

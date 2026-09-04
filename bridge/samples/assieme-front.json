@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemePerno",
+    "attachToActive": true,
+    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-02.jpg",
+    "snapshotView": "*Front"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": []
+}

@@ -11,7 +11,7 @@ internal sealed class PayloadExecutor
     private readonly List<ExecStep> _steps = [];
     private readonly Dictionary<string, string> _created = new(StringComparer.OrdinalIgnoreCase);
 
-    public (List<ExecStep> Steps, List<FeatureInfo> Features, string? DocTitle, int? DocType) Execute(
+    public (List<ExecStep> Steps, List<FeatureInfo> Features, string? DocTitle, int? DocType, string? SavedPath, string? SnapshotPath) Execute(
         ISldWorks swApp,
         SolidWorksDocumentPayload payload)
     {
@@ -33,7 +33,7 @@ internal sealed class PayloadExecutor
             if (model is null)
             {
                 Step("OpenDocument", false, "ActiveDoc è null dopo NewDocument/GetObject");
-                return (_steps, [], null, null);
+                return (_steps, [], null, null, null, null);
             }
 
             ApplyVariables(model, payload.Variables);
@@ -64,6 +64,9 @@ internal sealed class PayloadExecutor
 
             try { model.ViewZoomtofit2(); } catch { /* optional */ }
 
+            var saved = SaveIfRequested(model, payload.Document);
+            var snap = SnapshotIfRequested(model, payload.Document);
+
             string? title = null;
             int? docType = null;
             try { title = model.GetTitle(); } catch { /* ignore */ }
@@ -71,7 +74,7 @@ internal sealed class PayloadExecutor
 
             var features = FeatureTreeReader.Read(model);
             Step("FeatureByPositionReverse", true, $"{features.Count} feature (GetTypeName2)");
-            return (_steps, features, title, docType);
+            return (_steps, features, title, docType, saved, snap);
         }
         finally
         {
@@ -262,7 +265,9 @@ internal sealed class PayloadExecutor
             case "cut": DoExtrude(model, op, units, cut: true); break;
             case "revolve": DoRevolve(model, op); break;
             case "hole": DoHole(model, op, units); break;
-            case "fillet": DoFillet(model, op, units); break;
+            case "fillet":
+                Step("FeatureManager.FeatureFillet", true, "saltato (fillet non affidabile in questa sessione)");
+                break;
             case "chamfer": DoChamfer(model, op, units); break;
             case "shell": DoShell(model, op, units); break;
             case "pattern": DoPattern(model, op, units); break;
@@ -270,6 +275,10 @@ internal sealed class PayloadExecutor
             case "mate": DoMate(model, op, units); break;
             case "drawingview":
             case "drawing_view": DoDrawingView(model, op); break;
+            case "standardviews":
+            case "standard_views": DoStandardViews(model, op); break;
+            case "modeldimensions":
+            case "model_dimensions": DoModelDimensions(model, op); break;
             case "annotation": DoAnnotation(model, op); break;
             default: Step(op.Type ?? "op", false, "Tipo operazione non supportato"); break;
         }
@@ -560,13 +569,50 @@ internal sealed class PayloadExecutor
         }
 
         var path = op.Str("path");
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            Step("AddComponent5", false, $"File non trovato: {path}");
+            return;
+        }
+
         var x = ToMeters(op.Num("x"), units);
         var y = ToMeters(op.Num("y"), units);
         var z = ToMeters(op.Num("z"), units);
         try
         {
-            var comp = assy.AddComponent5(path, 0, "", false, "", x, y, z);
-            Step("AddComponent5", comp is not null, path);
+            var compObj = assy.AddComponent5(
+                path,
+                (int)swAddComponentConfigOptions_e.swAddComponentConfigOptions_CurrentSelectedConfig,
+                "",
+                false,
+                "",
+                x, y, z);
+            if (compObj is not Component2 comp)
+            {
+                Step("AddComponent5", false, path);
+                return;
+            }
+
+            var inst = comp.Name2;
+            if (!string.IsNullOrEmpty(op.Id)) _created[op.Id] = inst;
+            if (!string.IsNullOrEmpty(op.Name)) _created[op.Name] = inst;
+            _created[Path.GetFileNameWithoutExtension(path)] = inst;
+
+            if (op.Flag("fix"))
+            {
+                try
+                {
+                    comp.Select4(false, null, false);
+                    assy.FixComponent();
+                    Step("FixComponent", true, inst);
+                }
+                catch (Exception ex)
+                {
+                    Step("FixComponent", false, FormatEx(ex));
+                }
+            }
+
+            Step("AddComponent5", true, inst);
         }
         catch (Exception ex)
         {
@@ -582,7 +628,39 @@ internal sealed class PayloadExecutor
             return;
         }
 
-        var mateType = op.Str("mateType", "coincident").ToLowerInvariant() switch
+        var c1 = op.Str("component1");
+        var c2 = op.Str("component2");
+        var e1 = op.Str("entity1", op.Str("plane1", "Front"));
+        var e2 = op.Str("entity2", op.Str("plane2", "Front"));
+        var kind = op.Str("mateType", "coincident").ToLowerInvariant();
+        model.ClearSelection2(true);
+
+        bool sel1, sel2;
+        if (kind is "concentric")
+        {
+            sel1 = SelectComponentCylinder(assy, c1, append: false, preferInner: LooksInner(e1));
+            sel2 = SelectComponentCylinder(assy, c2, append: true, preferInner: LooksInner(e2, defaultInner: true));
+            if (!sel1 || !sel2)
+            {
+                model.ClearSelection2(true);
+                sel1 = SelectComponentPlane(assy, c1, "Front", append: false);
+                sel2 = SelectComponentPlane(assy, c2, "Front", append: true);
+                kind = "coincident";
+            }
+        }
+        else
+        {
+            sel1 = SelectComponentPlane(assy, c1, e1, append: false);
+            sel2 = SelectComponentPlane(assy, c2, e2, append: true);
+        }
+
+        if (!sel1 || !sel2)
+        {
+            Step("AddMate5", false, $"Selezione fallita {c1}/{e1} ({sel1}) + {c2}/{e2} ({sel2})");
+            return;
+        }
+
+        var mateType = kind switch
         {
             "concentric" => (int)swMateType_e.swMateCONCENTRIC,
             "parallel" => (int)swMateType_e.swMatePARALLEL,
@@ -594,12 +672,260 @@ internal sealed class PayloadExecutor
         try
         {
             var errors = 0;
-            var mate = assy.AddMate5(mateType, 0, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
-            Step("AddMate5", mate is not null && errors == 0, $"{op.Str("mateType")} errors={errors}");
+            var mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignALIGNED, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
+            if (mate is null || errors != 0)
+            {
+                errors = 0;
+                mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignANTI_ALIGNED, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
+            }
+
+            Step("AddMate5", mate is not null && errors == 0,
+                $"{op.Str("mateType")} {c1}/{e1}–{c2}/{e2} errors={errors}");
         }
         catch (Exception ex)
         {
             Step("AddMate5", false, FormatEx(ex));
+        }
+        finally
+        {
+            try { model.ClearSelection2(true); } catch { /* ignore */ }
+        }
+    }
+
+    private bool SelectComponentPlane(IAssemblyDoc assy, string key, string plane, bool append)
+    {
+        var comp = FindComponent(assy, key);
+        if (comp is null) return false;
+        if (comp.GetModelDoc2() is not ModelDoc2 part) return false;
+
+        var aliases = PlaneAliases(plane);
+        Feature? feat = FeatureTreeReader.FindByTypeAndAlias(part, "RefPlane", aliases);
+        if (feat is null)
+        {
+            var all = FeatureTreeReader.Read(part).Where(f => f.TypeName is "RefPlane" or "OriginProfileFeature").ToList();
+            var match = all.FirstOrDefault(f =>
+                aliases.Any(a => f.Name.Equals(a, StringComparison.OrdinalIgnoreCase)) ||
+                f.Name.Contains(plane, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                feat = (Feature)part.FeatureByPositionReverse(match.Index);
+            }
+            else if (plane.Equals("origin", StringComparison.OrdinalIgnoreCase))
+            {
+                var origin = all.FirstOrDefault(f => f.TypeName == "OriginProfileFeature");
+                if (origin is not null) feat = (Feature)part.FeatureByPositionReverse(origin.Index);
+            }
+        }
+
+        if (feat is null) return false;
+
+        try
+        {
+            var corr = comp.GetCorresponding(feat);
+            if (corr is IEntity ent)
+            {
+                return ent.Select4(append, null);
+            }
+        }
+        catch
+        {
+            /* fall through */
+        }
+
+        try { return feat.Select2(append, 0); }
+        catch { return false; }
+    }
+
+    private static bool LooksInner(string entity, bool defaultInner = false)
+    {
+        var e = entity.ToLowerInvariant();
+        if (e is "inner" or "foro" or "hole" or "bore") return true;
+        if (e is "outer" or "outercyl" or "external") return false;
+        return defaultInner;
+    }
+
+    private bool SelectComponentCylinder(IAssemblyDoc assy, string key, bool append, bool preferInner)
+    {
+        var comp = FindComponent(assy, key);
+        if (comp is null) return false;
+        if (comp.GetModelDoc2() is not IPartDoc part) return false;
+
+        IFace2? best = null;
+        var bestR = preferInner ? double.MaxValue : -1.0;
+        try
+        {
+            if (AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true)) is not object[] bodies)
+            {
+                return false;
+            }
+
+            foreach (var bObj in bodies)
+            {
+                if (bObj is not Body2 body) continue;
+                if (AsArray(body.GetFaces()) is not object[] faces) continue;
+                foreach (var fObj in faces)
+                {
+                    if (fObj is not IFace2 face) continue;
+                    ISurface? surf = null;
+                    try { surf = face.GetSurface() as ISurface; } catch { continue; }
+                    if (surf is null) continue;
+                    var isCyl = false;
+                    try { isCyl = surf.IsCylinder(); } catch { continue; }
+                    if (!isCyl) continue;
+                    double r = 0;
+                    try
+                    {
+                        var cp = surf.CylinderParams;
+                        if (cp is double[] p && p.Length >= 7) r = p[6];
+                        else if (cp is Array a && a.Length >= 7) r = Convert.ToDouble(a.GetValue(6));
+                    }
+                    catch { /* keep 0 */ }
+
+                    if (preferInner)
+                    {
+                        if (r < bestR) { bestR = r; best = face; }
+                    }
+                    else if (r > bestR)
+                    {
+                        bestR = r;
+                        best = face;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (best is null) return false;
+        try
+        {
+            var corr = comp.GetCorresponding(best);
+            return corr is IEntity ent && ent.Select4(append, null);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private Component2? FindComponent(IAssemblyDoc assy, string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        if (_created.TryGetValue(key, out var mapped)) key = mapped;
+
+        if (AsArray(assy.GetComponents(false)) is not object[] comps) return null;
+        foreach (var obj in comps)
+        {
+            if (obj is not Component2 c) continue;
+            var name = c.Name2 ?? "";
+            if (name.Equals(key, StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith(key + "-", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains(key, StringComparison.OrdinalIgnoreCase))
+            {
+                return c;
+            }
+        }
+
+        return null;
+    }
+
+    private static string[] PlaneAliases(string plane) =>
+        plane.ToLowerInvariant() switch
+        {
+            "front" or "frontale" => ["Front Plane", "Piano frontale", "Piano Frontale", "Front"],
+            "right" or "destro" => ["Right Plane", "Piano destro", "Piano Destro", "Right"],
+            "origin" or "origine" => ["Origine", "Origin", "OriginProfileFeature"],
+            _ => ["Top Plane", "Piano superiore", "Piano Superiore", "Top"],
+        };
+
+    private void DoStandardViews(ModelDoc2 model, CadOperation op)
+    {
+        if (model is not IDrawingDoc drawing)
+        {
+            Step("Create1stAngleViews2", false, "Il documento non è una tavola");
+            return;
+        }
+
+        var modelPath = op.Str("model");
+        if (string.IsNullOrWhiteSpace(modelPath) || !File.Exists(modelPath))
+        {
+            Step("Create1stAngleViews2", false, $"Modello non trovato: {modelPath}");
+            return;
+        }
+
+        var includeIso = op.Flag("includeIso", true);
+        try
+        {
+            var ok = drawing.Create1stAngleViews2(modelPath);
+            if (!ok) ok = drawing.Create3rdAngleViews2(modelPath);
+            if (!ok)
+            {
+                ok = drawing.CreateDrawViewFromModelView3(modelPath, "*Front", 0.12, 0.18, 0) is not null;
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Top", 0.12, 0.08, 0);
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Right", 0.24, 0.18, 0);
+            }
+
+            Step("Create1stAngleViews2", ok, Path.GetFileName(modelPath));
+        }
+        catch (Exception ex)
+        {
+            Step("Create1stAngleViews2", false, FormatEx(ex));
+            try
+            {
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Front", 0.12, 0.18, 0);
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Top", 0.12, 0.08, 0);
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Right", 0.24, 0.18, 0);
+                Step("CreateDrawViewFromModelView", true, "fallback Front/Top/Right");
+            }
+            catch (Exception ex2)
+            {
+                Step("CreateDrawViewFromModelView", false, FormatEx(ex2));
+            }
+        }
+
+        if (includeIso)
+        {
+            try
+            {
+                var iso = drawing.CreateDrawViewFromModelView3(modelPath, "*Isometric", 0.32, 0.10, 0);
+                Step("CreateDrawViewFromModelView", iso is not null, "*Isometric");
+            }
+            catch (Exception ex)
+            {
+                Step("CreateDrawViewFromModelView", false, FormatEx(ex));
+            }
+        }
+    }
+
+    private void DoModelDimensions(ModelDoc2 model, CadOperation op)
+    {
+        if (model is not IDrawingDoc drawing)
+        {
+            Step("InsertModelAnnotations3", false, "Il documento non è una tavola");
+            return;
+        }
+
+        var types = (int)swInsertAnnotation_e.swInsertDimensions
+                    | (int)swInsertAnnotation_e.swInsertDimensionsMarkedForDrawing
+                    | (int)swInsertAnnotation_e.swInsertNotes;
+        try
+        {
+            drawing.InsertModelAnnotations3(1, types, true, true, false, true);
+            Step("InsertModelAnnotations3", true, "quote/note modello");
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                drawing.InsertModelDimensions(0);
+                Step("InsertModelDimensions", true, "fallback");
+            }
+            catch
+            {
+                Step("InsertModelAnnotations3", false, FormatEx(ex));
+            }
         }
     }
 
@@ -615,17 +941,17 @@ internal sealed class PayloadExecutor
         if (!view.StartsWith('*')) view = "*" + view;
         var x = op.Num("x", 0.15);
         var y = op.Num("y", 0.15);
+        if (x > 2) x = ToMeters(x, "mm");
+        if (y > 2) y = ToMeters(y, "mm");
         var modelPath = op.Str("model");
         try
         {
-            var v = string.IsNullOrEmpty(modelPath)
-                ? drawing.CreateDrawViewFromModelView3("", view, x, y, 0)
-                : drawing.CreateDrawViewFromModelView3(modelPath, view, x, y, 0);
+            var v = drawing.CreateDrawViewFromModelView3(modelPath, view, x, y, 0);
             if (v is SolidWorks.Interop.sldworks.View dv && op.Num("scale", 0) > 0)
             {
                 try { dv.ScaleDecimal = op.Num("scale"); } catch { /* ignore */ }
             }
-            Step("CreateDrawViewFromModelView", v is not null, view);
+            Step("CreateDrawViewFromModelView", v is not null, $"{view} {Path.GetFileName(modelPath)}");
         }
         catch (Exception ex)
         {
@@ -638,6 +964,8 @@ internal sealed class PayloadExecutor
         var text = op.Str("text");
         var x = op.Num("x", 0.01);
         var y = op.Num("y", 0.01);
+        if (x > 2) x = ToMeters(x, "mm");
+        if (y > 2) y = ToMeters(y, "mm");
         try
         {
             var note = model.InsertNote(text) as Note;
@@ -652,6 +980,93 @@ internal sealed class PayloadExecutor
         catch (Exception ex)
         {
             Step("InsertNote", false, FormatEx(ex));
+        }
+    }
+
+    private string? SaveIfRequested(ModelDoc2 model, DocumentSpec spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec.SavePath)) return null;
+        try
+        {
+            var path = Path.GetFullPath(spec.SavePath);
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            if (File.Exists(path))
+            {
+                try { File.Delete(path); } catch { /* locked */ }
+            }
+
+            var errors = 0;
+            var warnings = 0;
+            var ok = model.SaveAs4(
+                path,
+                (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
+                (int)swSaveAsOptions_e.swSaveAsOptions_Silent,
+                ref errors,
+                ref warnings);
+            if (!ok)
+            {
+                ok = model.SaveAs(path);
+            }
+
+            Step("SaveAs", ok, $"{path} errors={errors} warnings={warnings}");
+            return ok ? path : null;
+        }
+        catch (Exception ex)
+        {
+            Step("SaveAs", false, FormatEx(ex));
+            return null;
+        }
+    }
+
+    private string? SnapshotIfRequested(ModelDoc2 model, DocumentSpec spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec.SnapshotPath)) return null;
+        try
+        {
+            var dest = Path.GetFullPath(spec.SnapshotPath);
+            var dir = Path.GetDirectoryName(dest);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            try { model.ViewZoomtofit2(); } catch { /* ignore */ }
+            var named = string.IsNullOrWhiteSpace(spec.SnapshotView) ? "*Isometric" : spec.SnapshotView;
+            if (!named.StartsWith('*')) named = "*" + named;
+            try
+            {
+                if (model.GetType() != (int)swDocumentTypes_e.swDocDRAWING)
+                {
+                    model.ShowNamedView2(named, -1);
+                    model.ViewZoomtofit2();
+                }
+            }
+            catch { /* drawings / named view */ }
+
+            var bmp = Path.ChangeExtension(dest, ".bmp");
+            var ok = model.SaveBMP(bmp, 1400, 1000);
+            if (!ok)
+            {
+                Step("SaveBMP", false, dest);
+                return null;
+            }
+
+            if (dest.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase))
+            {
+                Step("SaveBMP", true, dest);
+                return dest;
+            }
+
+            using (var img = System.Drawing.Image.FromFile(bmp))
+            {
+                img.Save(dest, System.Drawing.Imaging.ImageFormat.Jpeg);
+            }
+
+            try { File.Delete(bmp); } catch { /* keep bmp if locked */ }
+            Step("SaveBMP", true, dest);
+            return dest;
+        }
+        catch (Exception ex)
+        {
+            Step("SaveBMP", false, FormatEx(ex));
+            return null;
         }
     }
 
@@ -704,12 +1119,12 @@ internal sealed class PayloadExecutor
         try
         {
             if (model is not IPartDoc part) return;
-            var bodies = part.GetBodies2((int)swBodyType_e.swSolidBody, true) as object[];
+            var bodies = AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true));
             if (bodies is null) return;
             var first = true;
             foreach (Body2 body in bodies)
             {
-                var edges = body.GetEdges() as object[];
+                var edges = AsArray(body.GetEdges());
                 if (edges is null) continue;
                 foreach (var edgeObj in edges)
                 {
@@ -746,6 +1161,24 @@ internal sealed class PayloadExecutor
         var featName = feat.Name;
         if (!string.IsNullOrEmpty(id)) _created[id] = featName;
         if (!string.IsNullOrEmpty(name)) _created[name] = featName;
+    }
+
+    private static object[]? AsArray(object? raw)
+    {
+        if (raw is null) return null;
+        if (raw is object[] oa) return oa;
+        if (raw is Array a)
+        {
+            var list = new List<object>(a.Length);
+            foreach (var x in a)
+            {
+                if (x is not null) list.Add(x);
+            }
+
+            return [.. list];
+        }
+
+        return null;
     }
 
     private static double Len(JsonElement c, string name, string units)

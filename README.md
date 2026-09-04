@@ -41,6 +41,18 @@ Piastra di prova senza UI:
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\plate.json"
 ```
 
+Assieme (3 parti + mates) e tavola:
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-base.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\perno.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\rondella.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\assieme.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\tavola.json"
+```
+
+I file CAD finiscono in `sw-out/` (non versionato). FeatureFillet è saltato di proposito.
+
 ## OpenRouter
 
 Chiave in **Impostazioni** (resta in `localStorage`) oppure `OPENROUTER_API_KEY` in `.env.local`. Senza chiave: interprete demo locale. La chiave non va nel git.

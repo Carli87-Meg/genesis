@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "PiastraBase",
+    "attachToActive": false,
+    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/PiastraBase.SLDPRT",
+    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/parte-01.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [
+    { "name": "L", "value": 80 },
+    { "name": "W", "value": 50 },
+    { "name": "T", "value": 8 },
+    { "name": "D", "value": 8 }
+  ],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoPiastra",
+      "plane": "Top",
+      "contours": [{ "kind": "rectangle", "cx": 0, "cy": 0, "width": 80, "height": 50 }]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "EstrusionePiastra",
+      "sketch": "s1",
+      "depth": 8,
+      "merge": true
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "name": "SchizzoForo",
+      "plane": "Top",
+      "contours": [{ "kind": "circle", "cx": 0, "cy": 0, "diameter": 8 }]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "name": "TaglioForo",
+      "sketch": "s2",
+      "throughAll": true
+    }
+  ]
+}

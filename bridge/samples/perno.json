@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Perno",
+    "attachToActive": false,
+    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/Perno.SLDPRT",
+    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/parte-02.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [
+    { "name": "D", "value": 8 },
+    { "name": "L", "value": 24 }
+  ],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoPerno",
+      "plane": "Top",
+      "contours": [{ "kind": "circle", "cx": 0, "cy": 0, "diameter": 8 }]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "EstrusionePerno",
+      "sketch": "s1",
+      "depth": 24,
+      "merge": true
+    }
+  ]
+}

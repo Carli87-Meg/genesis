@@ -48,9 +48,10 @@ bridge/obj/
 *.user
 .vs/
 
-# SolidWorks autosaves
+# SolidWorks autosaves and generated CAD
 ~$*
 *.SWLock
+/sw-out/
 
 tmp-prompt.json
 bridge/tmp-*.txt

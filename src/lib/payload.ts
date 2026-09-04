@@ -88,6 +88,7 @@ export type CadOperation =
       x?: number
       y?: number
       z?: number
+      fix?: boolean
     }
   | {
       id: string
@@ -96,6 +97,10 @@ export type CadOperation =
       mateType: "coincident" | "concentric" | "distance" | "parallel"
       component1: string
       component2: string
+      entity1?: string
+      entity2?: string
+      plane1?: string
+      plane2?: string
       distance?: number
     }
   | {
@@ -107,6 +112,19 @@ export type CadOperation =
       x: number
       y: number
       scale?: number
+    }
+  | {
+      id: string
+      type: "standardViews"
+      name?: string
+      model: string
+      firstAngle?: boolean
+      includeIso?: boolean
+    }
+  | {
+      id: string
+      type: "modelDimensions"
+      name?: string
     }
   | {
       id: string
@@ -135,6 +153,9 @@ export type SolidWorksDocumentPayload = {
     type: DocumentType
     name: string
     attachToActive?: boolean
+    savePath?: string
+    snapshotPath?: string
+    snapshotView?: string
   }
   variables: CadVariable[]
   configurations: CadConfiguration[]
@@ -171,6 +192,8 @@ export type BridgeResponse = {
   version?: string
   document?: string
   documentType?: number
+  savedPath?: string
+  snapshotPath?: string
   steps?: BridgeStep[]
   features?: BridgeFeature[]
 }
@@ -203,6 +226,10 @@ export function opLabel(op: CadOperation): string {
       return `Mate ${op.mateType}`
     case "drawingView":
       return `Vista ${op.view}`
+    case "standardViews":
+      return "Viste standard"
+    case "modelDimensions":
+      return "Quote modello"
     case "annotation":
       return `Nota`
   }

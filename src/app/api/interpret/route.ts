@@ -19,8 +19,13 @@ Forma:
 }
 Operazioni ammesse: sketch (plane Front|Top|Right, contours rectangle|circle|line),
 extrude, cut (throughAll true per fori passanti), revolve, hole, fillet, chamfer, shell,
-pattern, component, mate, drawingView, annotation.
-Per una piastra forata: schizzo rettangolo, estrusione, schizzo cerchi, cut throughAll, fillet opzionale.`
+pattern, component (path, x,y,z, fix), mate (coincident|concentric|distance, entity1/entity2 piani o inner/outer),
+drawingView, standardViews (model path, includeIso), modelDimensions, annotation.
+Niente fillet se non richiesto: FeatureFillet è inaffidabile.
+Piastra: rettangolo + estrusione + cerchi + cut throughAll.
+Perno: cerchio su Top + estrusione.
+Rondella/boccola: due cerchi concentrici + estrusione.
+Assieme: component + mate. Tavola: standardViews + modelDimensions + annotation.`
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {

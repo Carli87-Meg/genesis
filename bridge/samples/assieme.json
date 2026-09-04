@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemePerno",
+    "attachToActive": false,
+    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno.SLDASM",
+    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-01.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "c1",
+      "type": "component",
+      "name": "PiastraBase",
+      "path": "C:/Users/Carli/SolidworksIA/sw-out/PiastraBase.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": true
+    },
+    {
+      "id": "c2",
+      "type": "component",
+      "name": "Perno",
+      "path": "C:/Users/Carli/SolidworksIA/sw-out/Perno.SLDPRT",
+      "x": 12,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "id": "c3",
+      "type": "component",
+      "name": "Rondella",
+      "path": "C:/Users/Carli/SolidworksIA/sw-out/Rondella.SLDPRT",
+      "x": 0,
+      "y": 12,
+      "z": 10
+    },
+    {
+      "id": "m1",
+      "type": "mate",
+      "name": "ConcPerno",
+      "mateType": "concentric",
+      "component1": "c2",
+      "component2": "c1",
+      "entity1": "outer",
+      "entity2": "inner"
+    },
+    {
+      "id": "m2",
+      "type": "mate",
+      "name": "CoincRightPerno",
+      "mateType": "coincident",
+      "component1": "c1",
+      "component2": "c2",
+      "entity1": "Right",
+      "entity2": "Right"
+    },
+    {
+      "id": "m3",
+      "type": "mate",
+      "name": "ConcRondella",
+      "mateType": "concentric",
+      "component1": "c3",
+      "component2": "c1",
+      "entity1": "inner",
+      "entity2": "inner"
+    },
+    {
+      "id": "m4",
+      "type": "mate",
+      "name": "CoincRightRondella",
+      "mateType": "coincident",
+      "component1": "c1",
+      "component2": "c3",
+      "entity1": "Right",
+      "entity2": "Right"
+    },
+    {
+      "id": "m5",
+      "type": "mate",
+      "name": "DistRondella",
+      "mateType": "distance",
+      "component1": "c1",
+      "component2": "c3",
+      "entity1": "Top",
+      "entity2": "Top",
+      "distance": 8
+    }
+  ]
+}

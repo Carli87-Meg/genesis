@@ -79,9 +79,14 @@ internal sealed class SolidWorksSession
                 Version = SafeVersion(),
                 Document = result.DocTitle,
                 DocumentType = result.DocType,
+                SavedPath = result.SavedPath,
+                SnapshotPath = result.SnapshotPath,
                 Steps = steps,
                 Features = features,
-                Error = failed ? steps.Find(s => !s.Ok)?.Detail : null,
+                Error = failed ? steps.Find(s => !s.Ok &&
+                    !s.Op.Contains("Fillet", StringComparison.OrdinalIgnoreCase) &&
+                    !s.Op.Contains("InsertShell", StringComparison.OrdinalIgnoreCase) &&
+                    !s.Op.Contains("Chamfer", StringComparison.OrdinalIgnoreCase))?.Detail : null,
             };
         }
         catch (Exception ex)
