@@ -1,0 +1,570 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  Loader2,
+  Send,
+  Settings2,
+  Trash2,
+  Box,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Preview3D } from "@/components/preview-3d"
+import {
+  DEFAULT_BRIDGE_URL,
+  opLabel,
+  type BridgeResponse,
+  type InterpretResult,
+  type SolidWorksDocumentPayload,
+  type TreeOp,
+} from "@/lib/payload"
+
+const EXAMPLES = [
+  "Piastra 80 × 50 × 8 mm con 4 fori Ø6 agli angoli, raccordi R1",
+  "Albero Ø20 mm, lunghezza 80 mm, raccordi R1 alle estremità",
+  "Boccola: Ø30 esterno, Ø16 interno, altezza 25 mm",
+]
+
+const SETTINGS_KEY = "solidworks-ia-settings"
+
+type Settings = {
+  openRouterKey: string
+  model: string
+  bridgeUrl: string
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  openRouterKey: "",
+  model: "openai/gpt-4o-mini",
+  bridgeUrl: DEFAULT_BRIDGE_URL,
+}
+
+type ChatMsg = { role: "user" | "assistant"; text: string }
+
+export function StudioApp() {
+  const [ready, setReady] = useState(false)
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [draft, setDraft] = useState<Settings>(DEFAULT_SETTINGS)
+  const [showKey, setShowKey] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const [prompt, setPrompt] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [sendBusy, setSendBusy] = useState(false)
+  const [messages, setMessages] = useState<ChatMsg[]>([])
+  const [ops, setOps] = useState<TreeOp[]>([])
+  const [payload, setPayload] = useState<SolidWorksDocumentPayload | null>(null)
+  const [dfm, setDfm] = useState<InterpretResult["dfm"]>([])
+  const [source, setSource] = useState<"demo" | "openrouter" | null>(null)
+  const [sendOpen, setSendOpen] = useState(false)
+  const [bridgeResult, setBridgeResult] = useState<BridgeResponse | null>(null)
+  const [bridgeErr, setBridgeErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<Settings>
+        const next = { ...DEFAULT_SETTINGS, ...parsed }
+        setSettings(next)
+        setDraft(next)
+      }
+    } catch {
+      /* ignore */
+    }
+    setReady(true)
+  }, [])
+
+  const visibleOps = useMemo(
+    () => ops.filter((o) => o.status !== "discarded"),
+    [ops],
+  )
+  const keyOn = settings.openRouterKey.length > 8
+
+  async function interpret(text: string) {
+    const q = text.trim()
+    if (!q || busy) return
+    setBusy(true)
+    setPrompt("")
+    setMessages((m) => [...m, { role: "user", text: q }])
+    try {
+      const res = await fetch("/api/interpret", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(settings.openRouterKey
+            ? {
+                "x-openrouter-key": settings.openRouterKey,
+                "x-openrouter-model": settings.model,
+              }
+            : {}),
+        },
+        body: JSON.stringify({
+          prompt: q,
+          previous: payload ?? undefined,
+        }),
+      })
+      const data = (await res.json()) as InterpretResult & { error?: string }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text: data.warning ? `${data.summary}\n${data.warning}` : data.summary,
+        },
+      ])
+      setOps(data.operations.map((o) => ({ ...o, status: "accepted" as const })))
+      setPayload(data.payload)
+      setDfm(data.dfm)
+      setSource(data.source)
+    } catch (err) {
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text: `Errore interpretazione: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      ])
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function move(i: number, dir: -1 | 1) {
+    setOps((list) => {
+      const j = i + dir
+      if (j < 0 || j >= list.length) return list
+      const next = [...list]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next
+    })
+  }
+
+  function editNumber(id: string, field: string, value: number) {
+    setOps((list) =>
+      list.map((o) => (o.id === id ? ({ ...o, [field]: value } as TreeOp) : o)),
+    )
+  }
+
+  async function sendToSolidWorks() {
+    const active = ops.filter((o) => o.status !== "discarded")
+    if (active.length === 0) return
+    const body: SolidWorksDocumentPayload = payload
+      ? { ...payload, operations: active }
+      : {
+          schemaVersion: 2,
+          units: "mm",
+          document: { type: "part", name: "Pezzo", attachToActive: false },
+          variables: [],
+          configurations: [],
+          operations: active,
+        }
+    setSendBusy(true)
+    setBridgeErr(null)
+    setBridgeResult(null)
+    setSendOpen(true)
+    try {
+      const res = await fetch("/api/solidworks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: body, bridgeUrl: settings.bridgeUrl }),
+      })
+      const data = (await res.json()) as BridgeResponse
+      setBridgeResult(data)
+      if (!data.ok) setBridgeErr(data.error || "Invio fallito")
+    } catch (err) {
+      setBridgeErr(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSendBusy(false)
+    }
+  }
+
+  function saveSettings() {
+    setSettings(draft)
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(draft))
+    setSettingsOpen(false)
+    const tail = draft.openRouterKey
+      ? `${draft.openRouterKey.slice(0, 8)}…${draft.openRouterKey.slice(-4)}`
+      : "demo"
+    setNotice(
+      draft.openRouterKey
+        ? `Chiave salvata (${tail}).`
+        : "Chiave rimossa. Resta la demo locale.",
+    )
+    setTimeout(() => setNotice(null), 4000)
+  }
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        Caricamento…
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Box className="size-5" />
+          <div>
+            <h1 className="text-sm font-semibold leading-none">Solidworks_IA</h1>
+            <p className="text-xs text-muted-foreground">
+              Chat → albero parametrico → SolidWorks via bridge HTTP→COM
+            </p>
+          </div>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Badge variant={keyOn ? "default" : "secondary"}>
+            {keyOn ? settings.openRouterKey.slice(0, 12) + "…" : "Demo"}
+          </Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setDraft(settings)
+              setSettingsOpen(true)
+            }}
+          >
+            <Settings2 className="size-3.5" />
+            Impostazioni
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={visibleOps.length === 0 || sendBusy}
+            onClick={() => void sendToSolidWorks()}
+          >
+            {sendBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+            Invia a SolidWorks
+          </Button>
+        </div>
+      </header>
+
+      {notice && (
+        <div className="border-b bg-muted px-4 py-2 text-sm">✓ {notice}</div>
+      )}
+
+      <main className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-3">
+        <section className="flex min-h-[320px] flex-col border-b lg:border-r lg:border-b-0">
+          <div className="border-b px-4 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Chat di progetto
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="space-y-3 p-4">
+              {messages.length === 0 && (
+                <div className="text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">Nessun messaggio</p>
+                  <p className="mt-1">
+                    Descrivi il pezzo in italiano o inglese, con quote in millimetri.
+                  </p>
+                </div>
+              )}
+              {messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={
+                    m.role === "user"
+                      ? "ml-8 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
+                      : "mr-8 rounded-lg bg-muted px-3 py-2 text-sm"
+                  }
+                >
+                  {m.text}
+                </div>
+              ))}
+              {busy && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Interpretazione…
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+          <div className="space-y-2 border-t p-3">
+            <div className="flex flex-wrap gap-1.5">
+              {EXAMPLES.map((ex) => (
+                <Button
+                  key={ex}
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  className="h-auto max-w-full whitespace-normal py-1 text-left"
+                  onClick={() => void interpret(ex)}
+                >
+                  {ex}
+                </Button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Piastra 80 × 50 × 8 mm…"
+                className="min-h-[72px] resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    void interpret(prompt)
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                className="self-end"
+                disabled={busy || !prompt.trim()}
+                onClick={() => void interpret(prompt)}
+              >
+                Invia
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section className="flex min-h-[280px] flex-col border-b lg:border-r lg:border-b-0">
+          <div className="border-b px-4 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Anteprima 3D
+          </div>
+          <div className="min-h-0 flex-1">
+            <Preview3D operations={visibleOps} />
+          </div>
+        </section>
+
+        <section className="flex min-h-[280px] flex-col">
+          <div className="border-b px-4 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Timeline operazioni
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="space-y-2 p-3">
+              {ops.length === 0 && (
+                <div className="text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">Nessuna operazione</p>
+                  <p className="mt-1">
+                    L&apos;albero feature è la fonte di verità: accetta, scarta, riordina, modifica le quote.
+                  </p>
+                </div>
+              )}
+              {ops.map((op, i) => (
+                <div
+                  key={op.id + i}
+                  className={`rounded-lg border p-2 text-sm ${op.status === "discarded" ? "opacity-50" : ""}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium">{op.name || opLabel(op)}</span>
+                    <Badge variant="outline" className="ml-auto">
+                      {op.type}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <Button type="button" size="icon-xs" variant="ghost" onClick={() => move(i, -1)}>
+                      <ArrowUp />
+                    </Button>
+                    <Button type="button" size="icon-xs" variant="ghost" onClick={() => move(i, 1)}>
+                      <ArrowDown />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      onClick={() =>
+                        setOps((list) =>
+                          list.map((o, idx) =>
+                            idx === i
+                              ? {
+                                  ...o,
+                                  status: o.status === "discarded" ? "accepted" : "discarded",
+                                }
+                              : o,
+                          ),
+                        )
+                      }
+                    >
+                      {op.status === "discarded" ? <Check /> : <Trash2 />}
+                    </Button>
+                    {"depth" in op && typeof op.depth === "number" && (
+                      <label className="ml-auto flex items-center gap-1 text-xs">
+                        profondità
+                        <Input
+                          className="h-6 w-16"
+                          type="number"
+                          value={op.depth}
+                          onChange={(e) => editNumber(op.id, "depth", Number(e.target.value))}
+                        />
+                      </label>
+                    )}
+                    {"radius" in op && typeof op.radius === "number" && (
+                      <label className="ml-auto flex items-center gap-1 text-xs">
+                        R
+                        <Input
+                          className="h-6 w-16"
+                          type="number"
+                          value={op.radius}
+                          onChange={(e) => editNumber(op.id, "radius", Number(e.target.value))}
+                        />
+                      </label>
+                    )}
+                    {"diameter" in op && typeof op.diameter === "number" && (
+                      <label className="ml-auto flex items-center gap-1 text-xs">
+                        Ø
+                        <Input
+                          className="h-6 w-16"
+                          type="number"
+                          value={op.diameter}
+                          onChange={(e) => editNumber(op.id, "diameter", Number(e.target.value))}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {dfm.length > 0 && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs">
+                  <p className="mb-1 font-medium">DFM</p>
+                  {dfm.map((d, i) => (
+                    <p key={i}>
+                      {d.severity === "error" ? "●" : "○"} {d.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {source && (
+                <p className="px-1 text-[11px] text-muted-foreground">
+                  Fonte: {source === "demo" ? "demo locale" : "OpenRouter"} · schema v2
+                </p>
+              )}
+            </div>
+          </ScrollArea>
+        </section>
+      </main>
+
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Impostazioni</DialogTitle>
+            <DialogDescription>
+              La chiave OpenRouter resta nel browser (localStorage), mai nel repository.
+              Senza chiave l&apos;interprete usa la demo locale. Il bridge è un processo
+              Windows HTTP→COM su questa macchina.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="or-key">Chiave OpenRouter</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="or-key"
+                  type={showKey ? "text" : "password"}
+                  placeholder="Incolla sk-or-v1-…"
+                  value={draft.openRouterKey}
+                  onChange={(e) => setDraft((s) => ({ ...s, openRouterKey: e.target.value }))}
+                />
+                <Button type="button" variant="outline" onClick={() => setShowKey((v) => !v)}>
+                  {showKey ? "Nascondi" : "Mostra"}
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="model">Modello</Label>
+              <select
+                id="model"
+                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                value={draft.model}
+                onChange={(e) => setDraft((s) => ({ ...s, model: e.target.value }))}
+              >
+                <option value="openai/gpt-4o-mini">GPT-4o mini</option>
+                <option value="openai/gpt-4o">GPT-4o</option>
+                <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="bridge">URL bridge SolidWorks</Label>
+              <Input
+                id="bridge"
+                value={draft.bridgeUrl}
+                onChange={(e) => setDraft((s) => ({ ...s, bridgeUrl: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            {draft.openRouterKey && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setDraft((s) => ({ ...s, openRouterKey: "" }))}
+              >
+                Rimuovi chiave
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={() => setSettingsOpen(false)}>
+              Annulla
+            </Button>
+            <Button type="button" onClick={saveSettings}>
+              Salva
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sendOpen} onOpenChange={setSendOpen}>
+        <DialogContent className="sm:max-w-lg" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Invia a SolidWorks</DialogTitle>
+            <DialogDescription>
+              Payload schema v2 verso il bridge locale. Traversata feature con
+              FeatureByPositionReverse + GetTypeName2 (mai SelectByID2).
+            </DialogDescription>
+          </DialogHeader>
+          {sendBusy && (
+            <p className="flex items-center gap-2 text-sm">
+              <Loader2 className="size-4 animate-spin" /> Esecuzione COM in corso…
+            </p>
+          )}
+          {bridgeErr && (
+            <pre className="max-h-40 overflow-auto rounded-md bg-destructive/10 p-2 text-xs whitespace-pre-wrap">
+              {bridgeErr}
+            </pre>
+          )}
+          {bridgeResult && (
+            <div className="max-h-64 space-y-2 overflow-auto text-xs">
+              <p>
+                attach: {bridgeResult.attachPath || "—"} · SW {bridgeResult.version || "—"} ·{" "}
+                {bridgeResult.document || "nessun documento"}
+              </p>
+              {(bridgeResult.steps ?? []).map((s, i) => (
+                <p key={i} className={s.ok ? "" : "text-destructive"}>
+                  {s.ok ? "OK" : "FAIL"} {s.op} — {s.detail}
+                </p>
+              ))}
+              {(bridgeResult.features ?? []).length > 0 && (
+                <p className="text-muted-foreground">
+                  Feature: {bridgeResult.features!.map((f) => `${f.name} (${f.typeName})`).join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSendOpen(false)}>
+              Chiudi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
