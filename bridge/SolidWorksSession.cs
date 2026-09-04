@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using SolidWorks.Interop.sldworks;
 
@@ -129,6 +130,7 @@ internal sealed class SolidWorksSession
                 _app = (ISldWorks)ComActive.Get(progId);
                 _attachPath = $"GetObject({progId})";
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] COM attach {_attachPath} SW {_app.RevisionNumber()}");
+                try { _app.Visible = true; } catch { /* ignore */ }
                 return;
             }
             catch (Exception ex)
@@ -136,6 +138,49 @@ internal sealed class SolidWorksSession
                 last = ex;
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] GetObject({progId}) fail: {PayloadExecutor.FormatEx(ex)}");
             }
+        }
+
+        try
+        {
+            _app = ComActive.FromRot(out var rotDetail);
+            if (_app is not null)
+            {
+                _attachPath = $"ROT({rotDetail})";
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] COM attach {_attachPath} SW {_app.RevisionNumber()}");
+                try { _app.Visible = true; } catch { /* ignore */ }
+                return;
+            }
+
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ROT attach fail: {rotDetail}");
+        }
+        catch (Exception ex)
+        {
+            last = ex;
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ROT attach fail: {PayloadExecutor.FormatEx(ex)}");
+        }
+
+        try
+        {
+            _app = ComActive.FromRunningWindow(out var hwndDetail);
+            if (_app is not null)
+            {
+                _attachPath = $"HWND({hwndDetail})";
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] COM attach {_attachPath} SW {_app.RevisionNumber()}");
+                try { _app.Visible = true; } catch { /* ignore */ }
+                return;
+            }
+
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] HWND attach fail: {hwndDetail}");
+        }
+        catch (Exception ex)
+        {
+            last = ex;
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] HWND attach fail: {PayloadExecutor.FormatEx(ex)}");
+        }
+
+        if (ComActive.HasInteractiveSolidWorks())
+        {
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] GUI SolidWorks presente ma non in ROT/HWND; CreateObject (Visible=true)");
         }
 
         foreach (var progId in ProgIds)
@@ -151,6 +196,8 @@ internal sealed class SolidWorksSession
                 _app = (ISldWorks)Activator.CreateInstance(t)!;
                 _attachPath = $"CreateObject({progId})";
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] COM create {_attachPath}");
+                try { _app.Visible = true; } catch { /* ignore */ }
+                try { _app.UserControl = true; } catch { /* ignore */ }
                 return;
             }
             catch (Exception ex)
