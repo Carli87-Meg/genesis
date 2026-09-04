@@ -49,6 +49,7 @@ curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\rondella.json"
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\assieme.json"
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\tavola.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\tavola-piastra.json"
 ```
 
 I file CAD finiscono in `sw-out/` (non versionato). FeatureFillet è saltato di proposito.
