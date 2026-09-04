@@ -733,14 +733,10 @@ internal sealed class PayloadExecutor
                 errors = 0;
                 mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignANTI_ALIGNED, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
             }
-            if ((mate is null || errors != 0) && assy is AssemblyDoc adoc)
+            if (mate is null || errors != 0)
             {
-                errors = 0;
-                try
-                {
-                    mate = adoc.AddMate3(mateType, (int)swMateAlign_e.swMateAlignCLOSEST, false, dist, dist, dist, 0, 0, 0, 0, 0, false, out errors);
-                }
-                catch { /* keep AddMate5 error */ }
+                try { assy.AddMate(mateType, (int)swMateAlign_e.swMateAlignCLOSEST, false, dist, 0); errors = 0; mate = "legacy"; }
+                catch { /* keep previous error */ }
             }
 
             Step("AddMate5", mate is not null && errors == 0,
@@ -776,20 +772,6 @@ internal sealed class PayloadExecutor
         var comp = FindComponent(assy, key);
         if (comp is null) return false;
         var aliases = PlaneAliases(plane);
-        try
-        {
-            foreach (var alias in aliases)
-            {
-                Feature? named = null;
-                try { named = comp.FeatureByName(alias) as Feature; } catch { /* next */ }
-                if (named is not null && named.Select2(append, 1)) return true;
-            }
-        }
-        catch
-        {
-            /* GetCorresponding fallback */
-        }
-
         if (comp.GetModelDoc2() is not ModelDoc2 part) return false;
 
         Feature? feat = FeatureTreeReader.FindByTypeAndAlias(part, "RefPlane", aliases);
@@ -825,7 +807,7 @@ internal sealed class PayloadExecutor
             /* fall through */
         }
 
-        try { return feat.Select2(append, 0); }
+        try { return feat.Select2(append, 1); }
         catch { return false; }
     }
 
