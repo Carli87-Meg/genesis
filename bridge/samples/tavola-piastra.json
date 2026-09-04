@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaPiastra",
+    "attachToActive": false,
+    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/TavolaPiastra.SLDDRW",
+    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/tavola-02.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "v1",
+      "type": "standardViews",
+      "name": "VisteStandard",
+      "model": "C:/Users/Carli/SolidworksIA/sw-out/PiastraBase.SLDPRT",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "d1",
+      "type": "modelDimensions",
+      "name": "Quote"
+    },
+    {
+      "id": "n1",
+      "type": "annotation",
+      "name": "Cartiglio",
+      "text": "PiastraBase 80 x 50 x 8 mm — foro centrale Ø8",
+      "x": 0.02,
+      "y": 0.01
+    }
+  ]
+}

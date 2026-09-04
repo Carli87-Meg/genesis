@@ -22,7 +22,7 @@ internal sealed class PayloadExecutor
 
         swApp.Visible = true;
         try { swApp.UserControl = true; } catch { /* ignore */ }
-        try { swApp.CommandInProgress = true; } catch { /* ignore */ }
+        try { swApp.CommandInProgress = false; } catch { /* mates fail if true */ }
         try
         {
             swApp.SetUserPreferenceToggle((int)swUserPreferenceToggle_e.swInputDimValOnCreate, false);
@@ -672,6 +672,8 @@ internal sealed class PayloadExecutor
             return;
         }
 
+        try { _sw!.CommandInProgress = false; } catch { /* ignore */ }
+
         var c1 = op.Str("component1");
         var c2 = op.Str("component2");
         var e1 = op.Str("entity1", op.Str("plane1", "Front"));
@@ -716,16 +718,33 @@ internal sealed class PayloadExecutor
         var dist = ToMeters(op.Num("distance"), units);
         try
         {
+            var nSel = 0;
+            try { nSel = ((ISelectionMgr)model.SelectionManager).GetSelectedObjectCount2(-1); } catch { /* ignore */ }
+
             var errors = 0;
-            var mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignALIGNED, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
+            object? mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignCLOSEST, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
+            if (mate is null || errors != 0)
+            {
+                errors = 0;
+                mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignALIGNED, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
+            }
             if (mate is null || errors != 0)
             {
                 errors = 0;
                 mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignANTI_ALIGNED, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
             }
+            if ((mate is null || errors != 0) && assy is AssemblyDoc adoc)
+            {
+                errors = 0;
+                try
+                {
+                    mate = adoc.AddMate3(mateType, (int)swMateAlign_e.swMateAlignCLOSEST, false, dist, dist, dist, 0, 0, 0, 0, 0, false, out errors);
+                }
+                catch { /* keep AddMate5 error */ }
+            }
 
             Step("AddMate5", mate is not null && errors == 0,
-                $"{op.Str("mateType")} {c1}/{e1}–{c2}/{e2} errors={errors}");
+                $"{op.Str("mateType")} {c1}/{e1}–{c2}/{e2} sel={nSel} errors={errors}");
         }
         catch (Exception ex)
         {
