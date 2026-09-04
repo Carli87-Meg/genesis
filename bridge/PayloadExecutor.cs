@@ -679,23 +679,24 @@ internal sealed class PayloadExecutor
         var kind = op.Str("mateType", "coincident").ToLowerInvariant();
         model.ClearSelection2(true);
 
+        var selData = CreateMark1(model);
         bool sel1, sel2;
         if (kind is "concentric")
         {
-            sel1 = SelectComponentCylinder(assy, c1, append: false, preferInner: LooksInner(e1));
-            sel2 = SelectComponentCylinder(assy, c2, append: true, preferInner: LooksInner(e2, defaultInner: true));
+            sel1 = SelectComponentCylinder(assy, c1, append: false, preferInner: LooksInner(e1), selData);
+            sel2 = SelectComponentCylinder(assy, c2, append: true, preferInner: LooksInner(e2, defaultInner: true), selData);
             if (!sel1 || !sel2)
             {
                 model.ClearSelection2(true);
-                sel1 = SelectComponentPlane(assy, c1, "Front", append: false);
-                sel2 = SelectComponentPlane(assy, c2, "Front", append: true);
+                sel1 = SelectComponentPlane(assy, c1, "Front", append: false, selData);
+                sel2 = SelectComponentPlane(assy, c2, "Front", append: true, selData);
                 kind = "coincident";
             }
         }
         else
         {
-            sel1 = SelectComponentPlane(assy, c1, e1, append: false);
-            sel2 = SelectComponentPlane(assy, c2, e2, append: true);
+            sel1 = SelectComponentPlane(assy, c1, e1, append: false, selData);
+            sel2 = SelectComponentPlane(assy, c2, e2, append: true, selData);
         }
 
         if (!sel1 || !sel2)
@@ -736,13 +737,42 @@ internal sealed class PayloadExecutor
         }
     }
 
-    private bool SelectComponentPlane(IAssemblyDoc assy, string key, string plane, bool append)
+    private static SelectData? CreateMark1(ModelDoc2 model)
+    {
+        try
+        {
+            var selMgr = (ISelectionMgr)model.SelectionManager;
+            var data = (SelectData)selMgr.CreateSelectData();
+            data.Mark = 1;
+            return data;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private bool SelectComponentPlane(IAssemblyDoc assy, string key, string plane, bool append, SelectData? selData)
     {
         var comp = FindComponent(assy, key);
         if (comp is null) return false;
+        var aliases = PlaneAliases(plane);
+        try
+        {
+            foreach (var alias in aliases)
+            {
+                Feature? named = null;
+                try { named = comp.FeatureByName(alias) as Feature; } catch { /* next */ }
+                if (named is not null && named.Select2(append, 1)) return true;
+            }
+        }
+        catch
+        {
+            /* GetCorresponding fallback */
+        }
+
         if (comp.GetModelDoc2() is not ModelDoc2 part) return false;
 
-        var aliases = PlaneAliases(plane);
         Feature? feat = FeatureTreeReader.FindByTypeAndAlias(part, "RefPlane", aliases);
         if (feat is null)
         {
@@ -768,7 +798,7 @@ internal sealed class PayloadExecutor
             var corr = comp.GetCorresponding(feat);
             if (corr is IEntity ent)
             {
-                return ent.Select4(append, null);
+                return ent.Select4(append, selData);
             }
         }
         catch
@@ -788,7 +818,7 @@ internal sealed class PayloadExecutor
         return defaultInner;
     }
 
-    private bool SelectComponentCylinder(IAssemblyDoc assy, string key, bool append, bool preferInner)
+    private bool SelectComponentCylinder(IAssemblyDoc assy, string key, bool append, bool preferInner, SelectData? selData)
     {
         var comp = FindComponent(assy, key);
         if (comp is null) return false;
@@ -846,7 +876,7 @@ internal sealed class PayloadExecutor
         try
         {
             var corr = comp.GetCorresponding(best);
-            return corr is IEntity ent && ent.Select4(append, null);
+            return corr is IEntity ent && ent.Select4(append, selData);
         }
         catch
         {
@@ -1063,8 +1093,9 @@ internal sealed class PayloadExecutor
             var path = Path.GetFullPath(spec.SavePath);
             var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            if (File.Exists(path))
+            if (File.Exists(path) && _sw is not null)
             {
+                try { _sw.CloseDoc(Path.GetFileName(path)); } catch { /* not open */ }
                 try { File.Delete(path); } catch { /* locked */ }
             }
 
