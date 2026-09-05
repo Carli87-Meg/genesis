@@ -5,8 +5,8 @@
     "type": "assembly",
     "name": "AssiemePerno",
     "attachToActive": false,
-    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno-live.SLDASM",
-    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-01.jpg",
+    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno-ok.SLDASM",
+    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-mates-01.jpg",
     "snapshotView": "*Isometric"
   },
   "variables": [],
@@ -27,9 +27,9 @@
       "type": "component",
       "name": "Perno",
       "path": "C:/Users/Carli/SolidworksIA/sw-out/Perno.SLDPRT",
-      "x": 12,
+      "x": 25,
       "y": 0,
-      "z": 0
+      "z": 15
     },
     {
       "id": "c3",
@@ -37,13 +37,13 @@
       "name": "Rondella",
       "path": "C:/Users/Carli/SolidworksIA/sw-out/Rondella.SLDPRT",
       "x": 0,
-      "y": 12,
-      "z": 10
+      "y": 25,
+      "z": 20
     },
     {
       "id": "m1",
       "type": "mate",
-      "name": "ConcPerno",
+      "name": "ConcPernoForo",
       "mateType": "concentric",
       "component1": "c2",
       "component2": "c1",
@@ -53,43 +53,33 @@
     {
       "id": "m2",
       "type": "mate",
-      "name": "CoincRightPerno",
+      "name": "CoincFondiPerno",
       "mateType": "coincident",
-      "component1": "c1",
-      "component2": "c2",
-      "entity1": "Right",
-      "entity2": "Right"
+      "component1": "c2",
+      "component2": "c1",
+      "entity1": "bottom",
+      "entity2": "bottom"
     },
     {
       "id": "m3",
       "type": "mate",
-      "name": "ConcRondella",
+      "name": "ConcRondellaPerno",
       "mateType": "concentric",
       "component1": "c3",
-      "component2": "c1",
+      "component2": "c2",
       "entity1": "inner",
-      "entity2": "inner"
+      "entity2": "outer"
     },
     {
       "id": "m4",
       "type": "mate",
-      "name": "CoincRightRondella",
+      "name": "CoincRondellaPiastra",
       "mateType": "coincident",
-      "component1": "c1",
-      "component2": "c3",
-      "entity1": "Right",
-      "entity2": "Right"
+      "component1": "c3",
+      "component2": "c1",
+      "entity1": "bottom",
+      "entity2": "top"
     },
-    {
-      "id": "m5",
-      "type": "mate",
-      "name": "DistRondella",
-      "mateType": "distance",
-      "component1": "c1",
-      "component2": "c3",
-      "entity1": "Top",
-      "entity2": "Top",
-      "distance": 8
-    }
+    { "id": "v1", "type": "verify" }
   ]
 }

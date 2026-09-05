@@ -102,6 +102,23 @@ export type CadOperation =
       plane1?: string
       plane2?: string
       distance?: number
+      align?: "aligned" | "anti" | "closest"
+      flip?: boolean
+    }
+  | {
+      id: string
+      type: "clearMates"
+      name?: string
+    }
+  | {
+      id: string
+      type: "inspect"
+      name?: string
+    }
+  | {
+      id: string
+      type: "verify"
+      name?: string
     }
   | {
       id: string
@@ -156,6 +173,7 @@ export type SolidWorksDocumentPayload = {
     savePath?: string
     snapshotPath?: string
     snapshotView?: string
+    openPath?: string
   }
   variables: CadVariable[]
   configurations: CadConfiguration[]
@@ -232,5 +250,11 @@ export function opLabel(op: CadOperation): string {
       return "Quote modello"
     case "annotation":
       return `Nota`
+    case "clearMates":
+      return "Elimina mate"
+    case "inspect":
+      return "Ispeziona assieme"
+    case "verify":
+      return "Verifica layout"
   }
 }

@@ -99,12 +99,59 @@ internal sealed class PayloadExecutor
             Step("AttachToActive", false, "Nessun documento attivo");
         }
 
+        if (!string.IsNullOrWhiteSpace(spec.OpenPath))
+        {
+            var opened = OpenExisting(swApp, spec.OpenPath);
+            if (opened is not null) return opened;
+        }
+
         return kind switch
         {
             "assembly" or "assieme" => NewAssembly(swApp, spec.Name),
             "drawing" or "tavola" or "disegno" => NewDrawing(swApp, spec.Name),
             _ => NewPart(swApp, spec.Name),
         };
+    }
+
+    private ModelDoc2? OpenExisting(ISldWorks swApp, string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (!File.Exists(full))
+        {
+            Step("OpenDoc6", false, $"File non trovato: {full}");
+            return null;
+        }
+
+        var dtype = full.EndsWith(".sldasm", StringComparison.OrdinalIgnoreCase)
+            ? (int)swDocumentTypes_e.swDocASSEMBLY
+            : full.EndsWith(".slddrw", StringComparison.OrdinalIgnoreCase)
+                ? (int)swDocumentTypes_e.swDocDRAWING
+                : (int)swDocumentTypes_e.swDocPART;
+        var errors = 0;
+        var warnings = 0;
+        try
+        {
+            var doc = swApp.OpenDoc6(
+                full,
+                dtype,
+                (int)swOpenDocOptions_e.swOpenDocOptions_Silent,
+                "",
+                ref errors,
+                ref warnings) as ModelDoc2;
+            Step("OpenDoc6", doc is not null, $"{Path.GetFileName(full)} errors={errors} warnings={warnings}");
+            if (doc is not null)
+            {
+                var aErr = 0;
+                try { swApp.ActivateDoc3(doc.GetTitle(), false, 0, ref aErr); } catch { /* ignore */ }
+            }
+
+            return doc;
+        }
+        catch (Exception ex)
+        {
+            Step("OpenDoc6", false, FormatEx(ex));
+            return null;
+        }
     }
 
     private ModelDoc2? NewPart(ISldWorks swApp, string name)
@@ -275,6 +322,10 @@ internal sealed class PayloadExecutor
             case "pattern": DoPattern(model, op, units); break;
             case "component": DoComponent(model, op, units); break;
             case "mate": DoMate(model, op, units); break;
+            case "clearmates":
+            case "clear_mates": DoClearMates(model); break;
+            case "inspect": DoInspect(model); break;
+            case "verify": DoVerifyLayout(model, op, units); break;
             case "drawingview":
             case "drawing_view": DoDrawingView(model, op); break;
             case "standardviews":
@@ -682,25 +733,8 @@ internal sealed class PayloadExecutor
         model.ClearSelection2(true);
 
         var selData = CreateMark1(model);
-        bool sel1, sel2;
-        if (kind is "concentric")
-        {
-            sel1 = SelectComponentCylinder(assy, c1, append: false, preferInner: LooksInner(e1), selData);
-            sel2 = SelectComponentCylinder(assy, c2, append: true, preferInner: LooksInner(e2, defaultInner: true), selData);
-            if (!sel1 || !sel2)
-            {
-                model.ClearSelection2(true);
-                sel1 = SelectComponentPlane(assy, c1, "Front", append: false, selData);
-                sel2 = SelectComponentPlane(assy, c2, "Front", append: true, selData);
-                kind = "coincident";
-            }
-        }
-        else
-        {
-            sel1 = SelectComponentPlane(assy, c1, e1, append: false, selData);
-            sel2 = SelectComponentPlane(assy, c2, e2, append: true, selData);
-        }
-
+        var sel1 = SelectMateEntity(assy, c1, e1, append: false, selData, kind);
+        var sel2 = SelectMateEntity(assy, c2, e2, append: true, selData, kind);
         if (!sel1 || !sel2)
         {
             Step("AddMate5", false, $"Selezione fallita {c1}/{e1} ({sel1}) + {c2}/{e2} ({sel2})");
@@ -716,31 +750,41 @@ internal sealed class PayloadExecutor
             _ => (int)swMateType_e.swMateCOINCIDENT,
         };
         var dist = ToMeters(op.Num("distance"), units);
+        var alignments = AlignmentsToTry(op, e1, e2, kind);
+        var flip = op.Flag("flip");
         try
         {
             var nSel = 0;
             try { nSel = ((ISelectionMgr)model.SelectionManager).GetSelectedObjectCount2(-1); } catch { /* ignore */ }
 
-            var errors = 0;
-            object? mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignCLOSEST, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
-            if (mate is null || errors != 0)
+            Mate2? mate = null;
+            var errors = -1;
+            var usedAlign = -1;
+            foreach (var align in alignments)
             {
                 errors = 0;
-                mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignALIGNED, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
-            }
-            if (mate is null || errors != 0)
-            {
-                errors = 0;
-                mate = assy.AddMate5(mateType, (int)swMateAlign_e.swMateAlignANTI_ALIGNED, false, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
-            }
-            if (mate is null || errors != 0)
-            {
-                try { assy.AddMate(mateType, (int)swMateAlign_e.swMateAlignCLOSEST, false, dist, 0); errors = 0; mate = "legacy"; }
-                catch { /* keep previous error */ }
+                mate = assy.AddMate5(mateType, align, flip, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
+                if (mate is not null && errors == 0)
+                {
+                    usedAlign = align;
+                    break;
+                }
+
+                model.ClearSelection2(true);
+                SelectMateEntity(assy, c1, e1, append: false, selData, kind);
+                SelectMateEntity(assy, c2, e2, append: true, selData, kind);
             }
 
+            var alignName = usedAlign == (int)swMateAlign_e.swMateAlignANTI_ALIGNED
+                ? "anti"
+                : usedAlign == (int)swMateAlign_e.swMateAlignALIGNED
+                    ? "aligned"
+                    : usedAlign == (int)swMateAlign_e.swMateAlignCLOSEST
+                        ? "closest"
+                        : "none";
             Step("AddMate5", mate is not null && errors == 0,
-                $"{op.Str("mateType")} {c1}/{e1}–{c2}/{e2} sel={nSel} errors={errors}");
+                $"{kind} {c1}/{e1}–{c2}/{e2} sel={nSel} align={alignName} errors={errors}");
+            LogComponentBoxes(assy);
         }
         catch (Exception ex)
         {
@@ -749,6 +793,374 @@ internal sealed class PayloadExecutor
         finally
         {
             try { model.ClearSelection2(true); } catch { /* ignore */ }
+        }
+    }
+
+    private static int[] AlignmentsToTry(CadOperation op, string e1, string e2, string kind)
+    {
+        var requested = op.Str("align").ToLowerInvariant();
+        if (requested is "anti" or "antialigned" or "anti-aligned")
+            return [(int)swMateAlign_e.swMateAlignANTI_ALIGNED, (int)swMateAlign_e.swMateAlignALIGNED];
+        if (requested is "aligned")
+            return [(int)swMateAlign_e.swMateAlignALIGNED, (int)swMateAlign_e.swMateAlignANTI_ALIGNED];
+        if (requested is "closest")
+            return [(int)swMateAlign_e.swMateAlignCLOSEST, (int)swMateAlign_e.swMateAlignALIGNED, (int)swMateAlign_e.swMateAlignANTI_ALIGNED];
+
+        var a = e1.ToLowerInvariant();
+        var b = e2.ToLowerInvariant();
+        var oppositeFaces = (IsTopEntity(a) && IsBottomEntity(b)) || (IsBottomEntity(a) && IsTopEntity(b));
+        if (kind is "coincident" && oppositeFaces)
+        {
+            return [(int)swMateAlign_e.swMateAlignANTI_ALIGNED, (int)swMateAlign_e.swMateAlignALIGNED];
+        }
+
+        if (kind is "concentric")
+        {
+            return [(int)swMateAlign_e.swMateAlignALIGNED, (int)swMateAlign_e.swMateAlignANTI_ALIGNED];
+        }
+
+        return [(int)swMateAlign_e.swMateAlignALIGNED, (int)swMateAlign_e.swMateAlignANTI_ALIGNED];
+    }
+
+    private static bool IsTopEntity(string e) =>
+        e is "top" or "facetop" or "upper" or "faccia-sup" or "facciasup";
+
+    private static bool IsBottomEntity(string e) =>
+        e is "bottom" or "facebottom" or "lower" or "faccia-inf" or "facciainf";
+
+    private bool SelectMateEntity(
+        IAssemblyDoc assy,
+        string key,
+        string entity,
+        bool append,
+        SelectData? selData,
+        string mateKind)
+    {
+        var e = entity.ToLowerInvariant();
+        if (mateKind is "concentric" || e is "inner" or "outer" or "hole" or "foro" or "od" or "id")
+        {
+            return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: mateKind is "concentric" && append), selData);
+        }
+
+        if (IsTopEntity(e))
+        {
+            return SelectComponentPlanarFace(assy, key, wantTop: true, append, selData);
+        }
+
+        if (IsBottomEntity(e))
+        {
+            return SelectComponentPlanarFace(assy, key, wantTop: false, append, selData);
+        }
+
+        return SelectComponentPlane(assy, key, entity, append, selData);
+    }
+
+    private void DoClearMates(ModelDoc2 model)
+    {
+        var doomed = new List<Feature>();
+        try
+        {
+            var feat = (Feature)model.FirstFeature();
+            while (feat is not null)
+            {
+                var typeName = "";
+                try { typeName = feat.GetTypeName2(); } catch { /* ignore */ }
+                if (typeName is "MateGroup" or "MateGroupFeat")
+                {
+                    var sub = feat.GetFirstSubFeature() as Feature;
+                    while (sub is not null)
+                    {
+                        doomed.Add(sub);
+                        sub = sub.GetNextSubFeature() as Feature;
+                    }
+                }
+
+                feat = feat.GetNextFeature() as Feature;
+            }
+        }
+        catch (Exception ex)
+        {
+            Step("clearMates", false, FormatEx(ex));
+            return;
+        }
+
+        if (doomed.Count == 0)
+        {
+            Step("clearMates", true, "nessun mate");
+            return;
+        }
+
+        try
+        {
+            model.ClearSelection2(true);
+            foreach (var f in doomed)
+            {
+                try { f.Select2(true, 0); } catch { /* skip */ }
+            }
+
+            model.EditDelete();
+            Step("clearMates", true, $"eliminati {doomed.Count} mate");
+        }
+        catch (Exception ex)
+        {
+            Step("clearMates", false, FormatEx(ex));
+        }
+    }
+
+    private void DoInspect(ModelDoc2 model)
+    {
+        if (model is IAssemblyDoc assy)
+        {
+            LogComponentBoxes(assy);
+            InspectMates(model, assy);
+            return;
+        }
+
+        Step("inspect", true, model.GetTitle());
+    }
+
+    private void InspectMates(ModelDoc2 model, IAssemblyDoc assy)
+    {
+        try
+        {
+            var feat = (Feature)model.FirstFeature();
+            var n = 0;
+            while (feat is not null)
+            {
+                string typeName;
+                try { typeName = feat.GetTypeName2(); }
+                catch { typeName = ""; }
+
+                if (typeName is "MateGroup" or "MateGroupFeat")
+                {
+                    var sub = feat.GetFirstSubFeature() as Feature;
+                    while (sub is not null)
+                    {
+                        n++;
+                        var detail = sub.Name;
+                        try
+                        {
+                            if (sub.GetSpecificFeature2() is IMate2 mate)
+                            {
+                                var t = mate.Type switch
+                                {
+                                    0 => "coincident",
+                                    1 => "concentric",
+                                    5 => "distance",
+                                    3 => "parallel",
+                                    2 => "perpendicular",
+                                    _ => $"type={mate.Type}",
+                                };
+                                var al = mate.Alignment switch
+                                {
+                                    0 => "aligned",
+                                    1 => "anti",
+                                    2 => "closest",
+                                    _ => mate.Alignment.ToString(),
+                                };
+                                detail = $"{sub.Name} {t} {al} flipped={mate.Flipped} ents={mate.GetMateEntityCount()}";
+                                for (var i = 0; i < mate.GetMateEntityCount(); i++)
+                                {
+                                    try
+                                    {
+                                        var ent = mate.MateEntity(i);
+                                        var comp = ent.ReferenceComponent?.Name2 ?? "?";
+                                        detail += $" | {comp} refType={ent.ReferenceType2}";
+                                    }
+                                    catch { /* skip entity */ }
+                                }
+                            }
+                        }
+                        catch { /* not a mate */ }
+
+                        Step("inspect.mate", true, detail);
+                        sub = sub.GetNextSubFeature() as Feature;
+                    }
+                }
+
+                feat = feat.GetNextFeature() as Feature;
+            }
+
+            if (n == 0) Step("inspect.mate", true, "MateGroup vuoto");
+        }
+        catch (Exception ex)
+        {
+            Step("inspect.mate", false, FormatEx(ex));
+        }
+    }
+
+    private void LogComponentBoxes(IAssemblyDoc assy)
+    {
+        if (AsArray(assy.GetComponents(false)) is not object[] comps) return;
+        foreach (var obj in comps)
+        {
+            if (obj is not Component2 c) continue;
+            var box = ReadBoxMm(c);
+            if (box is null) continue;
+            Step("bbox", true,
+                $"{c.Name2} X[{box[0]:0.00},{box[1]:0.00}] Y[{box[2]:0.00},{box[3]:0.00}] Z[{box[4]:0.00},{box[5]:0.00}]");
+        }
+    }
+
+    private static double[]? ReadBoxMm(Component2 c)
+    {
+        try
+        {
+            var raw = c.GetBox(false, false);
+            var d = AsDoubles(raw);
+            if (d is null || d.Length < 6) return null;
+            return
+            [
+                d[0] * 1000, d[3] * 1000,
+                d[1] * 1000, d[4] * 1000,
+                d[2] * 1000, d[5] * 1000,
+            ];
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static double[]? AsDoubles(object? raw)
+    {
+        if (raw is double[] da) return da;
+        if (raw is Array a && a.Length > 0)
+        {
+            var d = new double[a.Length];
+            for (var i = 0; i < a.Length; i++)
+            {
+                d[i] = Convert.ToDouble(a.GetValue(i));
+            }
+
+            return d;
+        }
+
+        return null;
+    }
+
+    private void DoVerifyLayout(ModelDoc2 model, CadOperation op, string units)
+    {
+        if (model is not IAssemblyDoc assy)
+        {
+            Step("verify", false, "non è un assieme");
+            return;
+        }
+
+        try { model.EditRebuild3(); }
+        catch
+        {
+            try { model.ForceRebuild3(true); } catch { /* ignore */ }
+        }
+
+        var plate = FindBox(assy, "PiastraBase") ?? FindBox(assy, "c1");
+        var pin = FindBox(assy, "Perno") ?? FindBox(assy, "c2");
+        var wash = FindBox(assy, "Rondella") ?? FindBox(assy, "c3");
+        if (plate is null || pin is null || wash is null)
+        {
+            Step("verify", false, $"box mancanti plate={plate is not null} pin={pin is not null} wash={wash is not null}");
+            LogComponentBoxes(assy);
+            return;
+        }
+
+        var pinThrough = pin[4] < plate[4] + 1.2 && pin[5] > plate[5] + 5;
+        var pinOnAxis = Math.Abs((pin[0] + pin[1]) / 2) < 1.5 && Math.Abs((pin[2] + pin[3]) / 2) < 1.5;
+        var washOnPlate = Math.Abs(wash[4] - plate[5]) < 0.6;
+        var washNotInside = wash[4] >= plate[5] - 0.3;
+        var washOnAxis = Math.Abs((wash[0] + wash[1]) / 2) < 1.5 && Math.Abs((wash[2] + wash[3]) / 2) < 1.5;
+        var ok = pinThrough && pinOnAxis && washOnPlate && washNotInside && washOnAxis;
+        Step("verify", ok,
+            $"pinThrough={pinThrough} pinAxis={pinOnAxis} washOnPlate={washOnPlate} washOutside={washNotInside} washAxis={washOnAxis} " +
+            $"plateZ={plate[4]:0.02}..{plate[5]:0.02} pinZ={pin[4]:0.02}..{pin[5]:0.02} washZ={wash[4]:0.02}..{wash[5]:0.02}");
+        LogComponentBoxes(assy);
+    }
+
+    private double[]? FindBox(IAssemblyDoc assy, string key)
+    {
+        var c = FindComponent(assy, key);
+        return c is null ? null : ReadBoxMm(c);
+    }
+
+    private bool SelectComponentPlanarFace(
+        IAssemblyDoc assy,
+        string key,
+        bool wantTop,
+        bool append,
+        SelectData? selData)
+    {
+        var comp = FindComponent(assy, key);
+        if (comp is null) return false;
+        if (comp.GetModelDoc2() is not IPartDoc part) return false;
+
+        IFace2? best = null;
+        var bestZ = wantTop ? double.MinValue : double.MaxValue;
+        try
+        {
+            if (AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true)) is not object[] bodies)
+            {
+                return false;
+            }
+
+            foreach (var bObj in bodies)
+            {
+                if (bObj is not Body2 body) continue;
+                if (AsArray(body.GetFaces()) is not object[] faces) continue;
+                foreach (var fObj in faces)
+                {
+                    if (fObj is not IFace2 face) continue;
+                    ISurface? surf = null;
+                    try { surf = face.GetSurface() as ISurface; } catch { continue; }
+                    if (surf is null) continue;
+                    var isPlane = false;
+                    try { isPlane = surf.IsPlane(); } catch { continue; }
+                    if (!isPlane) continue;
+
+                    var nz = 0.0;
+                    try
+                    {
+                        var pp = surf.PlaneParams;
+                        var d = AsDoubles(pp);
+                        if (d is { Length: >= 3 }) nz = d[2];
+                    }
+                    catch { /* keep 0 */ }
+
+                    if (Math.Abs(nz) < 0.85) continue;
+
+                    var box = AsDoubles(face.GetBox());
+                    if (box is null || box.Length < 6) continue;
+                    var zMid = (box[2] + box[5]) / 2.0;
+                    if (wantTop)
+                    {
+                        if (zMid > bestZ) { bestZ = zMid; best = face; }
+                    }
+                    else if (zMid < bestZ)
+                    {
+                        bestZ = zMid;
+                        best = face;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (best is null) return false;
+        try
+        {
+            var corr = comp.GetCorresponding(best);
+            var ok = corr is IEntity ent && ent.Select4(append, selData);
+            if (ok)
+            {
+                Step("selectFace", true, $"{key} {(wantTop ? "top" : "bottom")} Z={bestZ * 1000:0.02} mm");
+            }
+
+            return ok;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -877,7 +1289,13 @@ internal sealed class PayloadExecutor
         try
         {
             var corr = comp.GetCorresponding(best);
-            return corr is IEntity ent && ent.Select4(append, selData);
+            var ok = corr is IEntity ent && ent.Select4(append, selData);
+            if (ok)
+            {
+                Step("selectCyl", true, $"{key} {(preferInner ? "inner" : "outer")} R={bestR * 1000:0.02} mm");
+            }
+
+            return ok;
         }
         catch
         {
