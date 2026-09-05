@@ -6,10 +6,13 @@
     "name": "AssiemePerno",
     "attachToActive": false,
     "openPath": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno-ok.SLDASM",
-    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-mates-02.jpg",
-    "snapshotView": "*Front"
+    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-mates-01.jpg",
+    "snapshotView": "*Isometric"
   },
   "variables": [],
   "configurations": [],
-  "operations": []
+  "operations": [
+    { "id": "i1", "type": "inspect" },
+    { "id": "v1", "type": "verify" }
+  ]
 }

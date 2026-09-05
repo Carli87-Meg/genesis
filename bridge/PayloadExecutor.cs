@@ -88,6 +88,12 @@ internal sealed class PayloadExecutor
     {
         var kind = (spec.Type ?? "part").Trim().ToLowerInvariant();
 
+        if (!string.IsNullOrWhiteSpace(spec.OpenPath))
+        {
+            var opened = OpenExisting(swApp, spec.OpenPath);
+            if (opened is not null) return opened;
+        }
+
         if (spec.AttachToActive)
         {
             if (swApp.ActiveDoc is ModelDoc2 active)
@@ -97,12 +103,6 @@ internal sealed class PayloadExecutor
             }
 
             Step("AttachToActive", false, "Nessun documento attivo");
-        }
-
-        if (!string.IsNullOrWhiteSpace(spec.OpenPath))
-        {
-            var opened = OpenExisting(swApp, spec.OpenPath);
-            if (opened is not null) return opened;
         }
 
         return kind switch
@@ -120,6 +120,21 @@ internal sealed class PayloadExecutor
         {
             Step("OpenDoc6", false, $"File non trovato: {full}");
             return null;
+        }
+
+        try
+        {
+            if (swApp.GetOpenDocumentByName(full) is ModelDoc2 already)
+            {
+                var aErr = 0;
+                try { swApp.ActivateDoc3(already.GetTitle(), false, 0, ref aErr); } catch { /* ignore */ }
+                Step("ActivateDoc3", true, $"{Path.GetFileName(full)} già aperto");
+                return already;
+            }
+        }
+        catch
+        {
+            /* not open in this instance */
         }
 
         var dtype = full.EndsWith(".sldasm", StringComparison.OrdinalIgnoreCase)
@@ -1749,8 +1764,7 @@ internal sealed class PayloadExecutor
             {
                 if (model.GetType() != (int)swDocumentTypes_e.swDocDRAWING)
                 {
-                    model.ShowNamedView2(named, -1);
-                    model.ViewZoomtofit2();
+                    ApplyStandardView(model, named);
                 }
             }
             catch { /* drawings / named view */ }
@@ -1783,6 +1797,56 @@ internal sealed class PayloadExecutor
             Step("SaveBMP", false, FormatEx(ex));
             return null;
         }
+    }
+
+    private void ApplyStandardView(ModelDoc2 model, string named)
+    {
+        var viewId = StandardViewId(named);
+        // ViewId -1 ignores English names on Italian templates (*Anteriore / *Superiore).
+        try { model.ShowNamedView2("", viewId); } catch { /* ignore */ }
+        foreach (var alias in ViewNameAliases(named))
+        {
+            try { model.ShowNamedView2(alias, viewId); } catch { /* ignore */ }
+        }
+
+        try { model.ViewZoomtofit2(); } catch { /* ignore */ }
+        try { model.GraphicsRedraw2(); } catch { /* ignore */ }
+        try { Thread.Sleep(250); } catch { /* ignore */ }
+        Step("ShowNamedView2", true, $"{named} viewId={viewId}");
+    }
+
+    private static int StandardViewId(string named)
+    {
+        var key = named.Trim().TrimStart('*').ToLowerInvariant();
+        return key switch
+        {
+            "front" or "anteriore" or "frontale" => (int)swStandardViews_e.swFrontView,
+            "back" or "posteriore" => (int)swStandardViews_e.swBackView,
+            "left" or "sinistra" => (int)swStandardViews_e.swLeftView,
+            "right" or "destra" => (int)swStandardViews_e.swRightView,
+            "top" or "superiore" or "sopra" => (int)swStandardViews_e.swTopView,
+            "bottom" or "inferiore" or "sotto" => (int)swStandardViews_e.swBottomView,
+            "trimetric" or "trimetrica" => (int)swStandardViews_e.swTrimetricView,
+            "dimetric" or "dimetrica" => (int)swStandardViews_e.swDimetricView,
+            _ => (int)swStandardViews_e.swIsometricView,
+        };
+    }
+
+    private static string[] ViewNameAliases(string named)
+    {
+        var key = named.Trim().TrimStart('*').ToLowerInvariant();
+        return key switch
+        {
+            "front" or "anteriore" or "frontale" => ["*Front", "*Anteriore"],
+            "back" or "posteriore" => ["*Back", "*Posteriore"],
+            "left" or "sinistra" => ["*Left", "*Sinistra"],
+            "right" or "destra" => ["*Right", "*Destra"],
+            "top" or "superiore" or "sopra" => ["*Top", "*Superiore"],
+            "bottom" or "inferiore" or "sotto" => ["*Bottom", "*Inferiore"],
+            "trimetric" or "trimetrica" => ["*Trimetric", "*Trimetrica"],
+            "dimetric" or "dimetrica" => ["*Dimetric", "*Dimetrica"],
+            _ => ["*Isometric", "*Isometrica"],
+        };
     }
 
     private bool SelectPlane(ModelDoc2 model, string plane)

@@ -4,7 +4,8 @@
   "document": {
     "type": "assembly",
     "name": "AssiemePerno",
-    "attachToActive": true,
+    "attachToActive": false,
+    "openPath": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno-ok.SLDASM",
     "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-mates-03.jpg",
     "snapshotView": "*Top"
   },
