@@ -1063,15 +1063,36 @@ internal sealed class PayloadExecutor
             return;
         }
 
-        var pinThrough = pin[4] < plate[4] + 1.2 && pin[5] > plate[5] + 5;
-        var pinOnAxis = Math.Abs((pin[0] + pin[1]) / 2) < 1.5 && Math.Abs((pin[2] + pin[3]) / 2) < 1.5;
-        var washOnPlate = Math.Abs(wash[4] - plate[5]) < 0.6;
-        var washNotInside = wash[4] >= plate[5] - 0.3;
-        var washOnAxis = Math.Abs((wash[0] + wash[1]) / 2) < 1.5 && Math.Abs((wash[2] + wash[3]) / 2) < 1.5;
-        var ok = pinThrough && pinOnAxis && washOnPlate && washNotInside && washOnAxis;
+        var dx = plate[1] - plate[0];
+        var dy = plate[3] - plate[2];
+        var dz = plate[5] - plate[4];
+        var axis = dy <= dx && dy <= dz ? 2 : dz <= dx && dz <= dy ? 4 : 0;
+        var lo = axis;
+        var hi = axis + 1;
+        var pinThroughPos = pin[lo] < plate[lo] + 1.5 && pin[hi] > plate[hi] + 4;
+        var pinThroughNeg = pin[hi] > plate[hi] - 1.5 && pin[lo] < plate[lo] - 4;
+        var pinThrough = pinThroughPos || pinThroughNeg;
+        var pinCx = (pin[0] + pin[1]) / 2;
+        var pinCy = (pin[2] + pin[3]) / 2;
+        var pinCz = (pin[4] + pin[5]) / 2;
+        var plateCx = (plate[0] + plate[1]) / 2;
+        var plateCy = (plate[2] + plate[3]) / 2;
+        var plateCz = (plate[4] + plate[5]) / 2;
+        var pinOnAxis = axis == 2
+            ? Math.Abs(pinCx - plateCx) < 1.5 && Math.Abs(pinCz - plateCz) < 1.5
+            : axis == 4
+                ? Math.Abs(pinCx - plateCx) < 1.5 && Math.Abs(pinCy - plateCy) < 1.5
+                : Math.Abs(pinCy - plateCy) < 1.5 && Math.Abs(pinCz - plateCz) < 1.5;
+        var washOnPlus = Math.Abs(wash[lo] - plate[hi]) < 0.8;
+        var washOnMinus = Math.Abs(wash[hi] - plate[lo]) < 0.8;
+        var washOnPlate = washOnPlus || washOnMinus;
+        var washThick = wash[hi] - wash[lo];
+        var washOutside = washOnPlus ? wash[hi] >= plate[hi] - 0.2 : wash[lo] <= plate[lo] + 0.2;
+        var ok = pinThrough && pinOnAxis && washOnPlate && washOutside && washThick < 4;
+        var axisName = axis == 2 ? "Y" : axis == 4 ? "Z" : "X";
         Step("verify", ok,
-            $"pinThrough={pinThrough} pinAxis={pinOnAxis} washOnPlate={washOnPlate} washOutside={washNotInside} washAxis={washOnAxis} " +
-            $"plateZ={plate[4]:0.02}..{plate[5]:0.02} pinZ={pin[4]:0.02}..{pin[5]:0.02} washZ={wash[4]:0.02}..{wash[5]:0.02}");
+            $"axis={axisName} pinThrough={pinThrough} pinAxis={pinOnAxis} washOnPlate={washOnPlate} washOut={washOutside} " +
+            $"plate={plate[lo]:0.02}..{plate[hi]:0.02} pin={pin[lo]:0.02}..{pin[hi]:0.02} wash={wash[lo]:0.02}..{wash[hi]:0.02}");
         LogComponentBoxes(assy);
     }
 
@@ -1093,7 +1114,13 @@ internal sealed class PayloadExecutor
         if (comp.GetModelDoc2() is not IPartDoc part) return false;
 
         IFace2? best = null;
-        var bestZ = wantTop ? double.MinValue : double.MaxValue;
+        var bestT = wantTop ? double.MinValue : double.MaxValue;
+        if (!TryCylinderAxis(part, out var ax, out var ay, out var az, out var px, out var py, out var pz))
+        {
+            ax = 0; ay = 1; az = 0;
+            px = py = pz = 0;
+        }
+
         try
         {
             if (AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true)) is not object[] bodies)
@@ -1115,27 +1142,29 @@ internal sealed class PayloadExecutor
                     try { isPlane = surf.IsPlane(); } catch { continue; }
                     if (!isPlane) continue;
 
-                    var nz = 0.0;
+                    double nx = 0, ny = 0, nz = 1, qx = 0, qy = 0, qz = 0;
                     try
                     {
-                        var pp = surf.PlaneParams;
-                        var d = AsDoubles(pp);
-                        if (d is { Length: >= 3 }) nz = d[2];
+                        var d = AsDoubles(surf.PlaneParams);
+                        if (d is { Length: >= 6 })
+                        {
+                            nx = d[0]; ny = d[1]; nz = d[2];
+                            qx = d[3]; qy = d[4]; qz = d[5];
+                        }
                     }
-                    catch { /* keep 0 */ }
+                    catch { continue; }
 
-                    if (Math.Abs(nz) < 0.85) continue;
+                    var ndot = nx * ax + ny * ay + nz * az;
+                    if (Math.Abs(ndot) < 0.85) continue;
 
-                    var box = AsDoubles(face.GetBox());
-                    if (box is null || box.Length < 6) continue;
-                    var zMid = (box[2] + box[5]) / 2.0;
+                    var t = (qx - px) * ax + (qy - py) * ay + (qz - pz) * az;
                     if (wantTop)
                     {
-                        if (zMid > bestZ) { bestZ = zMid; best = face; }
+                        if (t > bestT) { bestT = t; best = face; }
                     }
-                    else if (zMid < bestZ)
+                    else if (t < bestT)
                     {
-                        bestZ = zMid;
+                        bestT = t;
                         best = face;
                     }
                 }
@@ -1153,7 +1182,7 @@ internal sealed class PayloadExecutor
             var ok = corr is IEntity ent && ent.Select4(append, selData);
             if (ok)
             {
-                Step("selectFace", true, $"{key} {(wantTop ? "top" : "bottom")} Z={bestZ * 1000:0.02} mm");
+                Step("selectFace", true, $"{key} {(wantTop ? "top" : "bottom")} t={bestT * 1000:0.02} mm");
             }
 
             return ok;
@@ -1162,6 +1191,58 @@ internal sealed class PayloadExecutor
         {
             return false;
         }
+    }
+
+    private static bool TryCylinderAxis(
+        IPartDoc part,
+        out double ax, out double ay, out double az,
+        out double px, out double py, out double pz)
+    {
+        ax = ay = az = px = py = pz = 0;
+        var bestR = double.MaxValue;
+        var found = false;
+        try
+        {
+            if (AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true)) is not object[] bodies)
+            {
+                return false;
+            }
+
+            foreach (var bObj in bodies)
+            {
+                if (bObj is not Body2 body) continue;
+                if (AsArray(body.GetFaces()) is not object[] faces) continue;
+                foreach (var fObj in faces)
+                {
+                    if (fObj is not IFace2 face) continue;
+                    ISurface? surf = null;
+                    try { surf = face.GetSurface() as ISurface; } catch { continue; }
+                    if (surf is null) continue;
+                    var isCyl = false;
+                    try { isCyl = surf.IsCylinder(); } catch { continue; }
+                    if (!isCyl) continue;
+                    var d = AsDoubles(surf.CylinderParams);
+                    if (d is null || d.Length < 7) continue;
+                    var r = Math.Abs(d[6]);
+                    if (!found || r < bestR)
+                    {
+                        found = true;
+                        bestR = r;
+                        px = d[0]; py = d[1]; pz = d[2];
+                        ax = d[3]; ay = d[4]; az = d[5];
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        var mag = Math.Sqrt(ax * ax + ay * ay + az * az);
+        if (!found || mag < 1e-12) return false;
+        ax /= mag; ay /= mag; az /= mag;
+        return true;
     }
 
     private static SelectData? CreateMark1(ModelDoc2 model)
