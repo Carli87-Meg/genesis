@@ -760,21 +760,36 @@ internal sealed class PayloadExecutor
             Mate2? mate = null;
             var errors = -1;
             var usedAlign = -1;
+            var usedFlip = flip;
             foreach (var align in alignments)
             {
-                errors = 0;
-                mate = assy.AddMate5(mateType, align, flip, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
-                if (mate is not null && errors == 0)
+                foreach (var tryFlip in flip ? new[] { true, false } : new[] { false, true })
                 {
-                    usedAlign = align;
-                    break;
-                }
+                    model.ClearSelection2(true);
+                    SelectMateEntity(assy, c1, e1, append: false, selData, kind);
+                    SelectMateEntity(assy, c2, e2, append: true, selData, kind);
+                    errors = 0;
+                    mate = assy.AddMate5(mateType, align, tryFlip, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
+                    if (mate is null)
+                    {
+                        continue;
+                    }
 
-                model.ClearSelection2(true);
-                SelectMateEntity(assy, c1, e1, append: false, selData, kind);
-                SelectMateEntity(assy, c2, e2, append: true, selData, kind);
+                    try { model.EditRebuild3(); } catch { try { model.ForceRebuild3(true); } catch { } }
+                    if (MateGeometryOk(assy, kind, c1, e1, c2, e2))
+                    {
+                        usedAlign = align;
+                        usedFlip = tryFlip;
+                        errors = 0;
+                        goto MateDone;
+                    }
+
+                    DeleteLastMate(model);
+                    mate = null;
+                }
             }
 
+            MateDone:
             var alignName = usedAlign == (int)swMateAlign_e.swMateAlignANTI_ALIGNED
                 ? "anti"
                 : usedAlign == (int)swMateAlign_e.swMateAlignALIGNED
@@ -782,8 +797,8 @@ internal sealed class PayloadExecutor
                     : usedAlign == (int)swMateAlign_e.swMateAlignCLOSEST
                         ? "closest"
                         : "none";
-            Step("AddMate5", mate is not null && errors == 0,
-                $"{kind} {c1}/{e1}–{c2}/{e2} sel={nSel} align={alignName} errors={errors}");
+            Step("AddMate5", mate is not null,
+                $"{kind} {c1}/{e1}–{c2}/{e2} sel={nSel} align={alignName} flip={usedFlip} errors={errors}");
             LogComponentBoxes(assy);
         }
         catch (Exception ex)
@@ -1243,6 +1258,103 @@ internal sealed class PayloadExecutor
         if (!found || mag < 1e-12) return false;
         ax /= mag; ay /= mag; az /= mag;
         return true;
+    }
+
+    private bool MateGeometryOk(IAssemblyDoc assy, string kind, string c1, string e1, string c2, string e2)
+    {
+        var plate = FindBox(assy, "PiastraBase") ?? FindBox(assy, "c1");
+        var pin = FindBox(assy, "Perno") ?? FindBox(assy, "c2");
+        var wash = FindBox(assy, "Rondella") ?? FindBox(assy, "c3");
+        if (plate is null) return true;
+        var axis = ThicknessAxis(plate);
+        var lo = axis;
+        var hi = axis + 1;
+
+        bool OnAxis(double[] box) =>
+            axis == 2
+                ? Math.Abs((box[0] + box[1]) / 2 - (plate[0] + plate[1]) / 2) < 2
+                  && Math.Abs((box[4] + box[5]) / 2 - (plate[4] + plate[5]) / 2) < 2
+                : axis == 4
+                    ? Math.Abs((box[0] + box[1]) / 2 - (plate[0] + plate[1]) / 2) < 2
+                      && Math.Abs((box[2] + box[3]) / 2 - (plate[2] + plate[3]) / 2) < 2
+                    : Math.Abs((box[2] + box[3]) / 2 - (plate[2] + plate[3]) / 2) < 2
+                      && Math.Abs((box[4] + box[5]) / 2 - (plate[4] + plate[5]) / 2) < 2;
+
+        if (kind is "concentric")
+        {
+            if (LooksLike(c1, "perno") || LooksLike(c2, "perno") || LooksLike(c1, "c2") || LooksLike(c2, "c2"))
+            {
+                return pin is not null && OnAxis(pin);
+            }
+
+            if (LooksLike(c1, "rondella") || LooksLike(c2, "rondella") || LooksLike(c1, "c3") || LooksLike(c2, "c3"))
+            {
+                return wash is not null && OnAxis(wash);
+            }
+
+            return true;
+        }
+
+        if (kind is "coincident" && pin is not null && (LooksLike(c1, "perno") || LooksLike(c2, "perno") || LooksLike(c1, "c2") || LooksLike(c2, "c2")))
+        {
+            var throughPos = pin[lo] < plate[lo] + 1.5 && pin[hi] > plate[hi] + 4;
+            var throughNeg = pin[hi] > plate[hi] - 1.5 && pin[lo] < plate[lo] - 4;
+            return throughPos || throughNeg;
+        }
+
+        if (kind is "coincident" && wash is not null && (LooksLike(c1, "rondella") || LooksLike(c2, "rondella") || LooksLike(c1, "c3") || LooksLike(c2, "c3")))
+        {
+            var onPlus = Math.Abs(wash[lo] - plate[hi]) < 1.0;
+            var onMinus = Math.Abs(wash[hi] - plate[lo]) < 1.0;
+            return onPlus || onMinus;
+        }
+
+        return true;
+    }
+
+    private static bool LooksLike(string key, string token) =>
+        key.Contains(token, StringComparison.OrdinalIgnoreCase);
+
+    private static int ThicknessAxis(double[] plate)
+    {
+        var dx = plate[1] - plate[0];
+        var dy = plate[3] - plate[2];
+        var dz = plate[5] - plate[4];
+        return dy <= dx && dy <= dz ? 2 : dz <= dx && dz <= dy ? 4 : 0;
+    }
+
+    private void DeleteLastMate(ModelDoc2 model)
+    {
+        Feature? last = null;
+        try
+        {
+            var feat = (Feature)model.FirstFeature();
+            while (feat is not null)
+            {
+                var tn = "";
+                try { tn = feat.GetTypeName2(); } catch { /* ignore */ }
+                if (tn is "MateGroup" or "MateGroupFeat")
+                {
+                    var sub = feat.GetFirstSubFeature() as Feature;
+                    while (sub is not null)
+                    {
+                        last = sub;
+                        sub = sub.GetNextSubFeature() as Feature;
+                    }
+                }
+
+                feat = feat.GetNextFeature() as Feature;
+            }
+
+            if (last is null) return;
+            model.ClearSelection2(true);
+            last.Select2(false, 0);
+            model.EditDelete();
+        }
+        catch
+        {
+            /* best effort */
+        }
     }
 
     private static SelectData? CreateMark1(ModelDoc2 model)
