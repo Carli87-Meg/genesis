@@ -9,10 +9,14 @@ const PROMPT =
   process.env.DEMO_PROMPT ||
   "Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM"
 
+const chromePath =
+  process.env.PLAYWRIGHT_CHROME ||
+  "C:\\Users\\Carli\\AppData\\Local\\ms-playwright\\chromium-1228\\chrome-win64\\chrome.exe"
+
 const browser = await chromium.launch({
-  channel: "msedge",
   headless: false,
-  args: ["--start-maximized", "--window-position=0,0", "--window-size=1280,1080"],
+  executablePath: chromePath,
+  args: ["--start-maximized", "--window-position=0,0", "--window-size=1280,1080", "--disable-gpu-sandbox"],
 })
 const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } })
 await page.setViewportSize({ width: 1280, height: 1000 })
@@ -41,8 +45,8 @@ try {
     await page.getByRole("button", { name: /^Invia$/ }).click()
   }
 
-  await page.getByText(/kit 4 documenti|Fonte:|Staffa a L|Boccola/i).first().waitFor({
-    timeout: 120000,
+  await page.getByText(/kit 4 documenti|Fonte: demo|Fonte: OpenRouter|Staffa a L 80/i).first().waitFor({
+    timeout: 180000,
   })
   await page.waitForTimeout(2500)
 
@@ -52,10 +56,10 @@ try {
   const dialog = page.getByRole("dialog")
   await dialog.waitFor({ timeout: 15000 })
 
-  await page.getByText(/Documento 4\/4|Ricostruzione completata|SetupSheet5|FAIL/i).waitFor({
+  await page.getByText(/Documento 4\/4|SetupSheet5|TavolaStaffa|Ricostruzione completata/i).first().waitFor({
     timeout: 360000,
   })
-  await page.waitForTimeout(4000)
+  await page.waitForTimeout(6000)
 
   const fail = await page.locator(".text-destructive, pre").count()
   console.log(JSON.stringify({ done: true, failHints: fail }))
