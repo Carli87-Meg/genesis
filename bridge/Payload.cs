@@ -22,6 +22,7 @@ public sealed class DocumentSpec
     public string? SnapshotPath { get; set; }
     public string? SnapshotView { get; set; }
     public string? OpenPath { get; set; }
+    public string? SheetFormat { get; set; }
 }
 
 public sealed class CadVariable

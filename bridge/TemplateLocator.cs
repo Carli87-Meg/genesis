@@ -37,6 +37,26 @@ internal static class TemplateLocator
 
     public static string Drawing() => FirstExisting(DrawingCandidates, "iso.drwdot");
 
+    public static string? SheetFormat(string? hint)
+    {
+        var dir = Path.Combine(SwPaths.RisorseCad, @"Cartigli_Template", "Cartiglio_CM");
+        var a3 = Path.Combine(dir, "PARTE_A3_CM.slddrt");
+        var a2 = Path.Combine(dir, "PARTE_A2_CM.slddrt");
+        var h = (hint ?? "A3").Trim();
+        if (File.Exists(h)) return Path.GetFullPath(h);
+        var resolved = SwPaths.Resolve(h);
+        if (File.Exists(resolved) &&
+            resolved.EndsWith(".slddrt", StringComparison.OrdinalIgnoreCase))
+        {
+            return resolved;
+        }
+
+        if (h.Contains("A2", StringComparison.OrdinalIgnoreCase) && File.Exists(a2)) return a2;
+        if (File.Exists(a3)) return a3;
+        if (File.Exists(a2)) return a2;
+        return null;
+    }
+
     private static string FirstExisting(IEnumerable<string> paths, string fallback)
     {
         foreach (var p in paths)

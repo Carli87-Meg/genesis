@@ -177,9 +177,284 @@ function bushing(outer: number, inner: number, h: number) {
   }
 }
 
+function partDoc(
+  name: string,
+  savePath: string,
+  snapshotPath: string,
+  operations: CadOperation[],
+  variables: SolidWorksDocumentPayload["variables"],
+): SolidWorksDocumentPayload {
+  return {
+    schemaVersion: 2,
+    units: "mm",
+    document: {
+      type: "part",
+      name,
+      attachToActive: false,
+      savePath,
+      snapshotPath,
+      snapshotView: "*Isometric",
+    },
+    variables,
+    configurations: [],
+    operations,
+  }
+}
+
+/** Staffa a L: piastra + parete + boss, 4 fori di fissaggio e foro guida. Senza fillet. */
+function lBracketStaffa(): {
+  operations: CadOperation[]
+  variables: SolidWorksDocumentPayload["variables"]
+  summary: string
+} {
+  const L = 80
+  const W = 50
+  const T = 8
+  const wallH = 40
+  const wallT = 8
+  const holeD = 6.5
+  const bossD = 16
+  const boreD = 10.2
+  const bossH = 6
+  const mx = 30
+  const my = 12
+  const wallCy = W / 2 - wallT / 2
+  const operations: CadOperation[] = [
+    {
+      id: "s1",
+      type: "sketch",
+      name: "SchizzoPiastra",
+      plane: "Top",
+      contours: [{ kind: "rectangle", cx: 0, cy: 0, width: L, height: W }],
+    },
+    {
+      id: "e1",
+      type: "extrude",
+      name: "EstrusionePiastra",
+      sketch: "s1",
+      depth: T,
+      merge: true,
+    },
+    {
+      id: "s2",
+      type: "sketch",
+      name: "SchizzoParete",
+      plane: "Top",
+      contours: [{ kind: "rectangle", cx: 0, cy: wallCy, width: L, height: wallT }],
+    },
+    {
+      id: "e2",
+      type: "extrude",
+      name: "EstrusioneParete",
+      sketch: "s2",
+      depth: wallH,
+      merge: true,
+    },
+    {
+      id: "s3",
+      type: "sketch",
+      name: "SchizzoBoss",
+      plane: "Top",
+      contours: [{ kind: "circle", cx: 0, cy: 0, diameter: bossD }],
+    },
+    {
+      id: "e3",
+      type: "extrude",
+      name: "EstrusioneBoss",
+      sketch: "s3",
+      depth: T + bossH,
+      merge: true,
+    },
+    {
+      id: "s4",
+      type: "sketch",
+      name: "SchizzoFori",
+      plane: "Top",
+      contours: [
+        { kind: "circle", cx: mx, cy: my, diameter: holeD },
+        { kind: "circle", cx: -mx, cy: my, diameter: holeD },
+        { kind: "circle", cx: mx, cy: -my, diameter: holeD },
+        { kind: "circle", cx: -mx, cy: -my, diameter: holeD },
+        { kind: "circle", cx: 0, cy: 0, diameter: boreD },
+      ],
+    },
+    {
+      id: "c1",
+      type: "cut",
+      name: "TaglioFori",
+      sketch: "s4",
+      throughAll: true,
+    },
+  ]
+  return {
+    operations,
+    variables: [
+      { name: "L", value: L },
+      { name: "W", value: W },
+      { name: "T", value: T },
+      { name: "WallH", value: wallH },
+      { name: "HoleD", value: holeD },
+      { name: "BossD", value: bossD },
+      { name: "BoreD", value: boreD },
+    ],
+    summary:
+      `Staffa a L ${L}×${W}×${T} mm, parete ${wallH} mm, boss Ø${bossD}×${bossH} mm, ` +
+      `4 fori Ø${holeD} e foro guida Ø${boreD}. Senza raccordi (FeatureFillet inaffidabile).`,
+  }
+}
+
+function fixtureKit(): {
+  job: SolidWorksDocumentPayload[]
+  summary: string
+} {
+  const staffa = lBracketStaffa()
+  const boccola = bushing(16, 10.2, 12)
+  const staffaDoc = partDoc(
+    "StaffaFissaggio",
+    "CAD/StaffaFissaggio.SLDPRT",
+    "Export/staffa-fissaggio.jpg",
+    staffa.operations,
+    staffa.variables,
+  )
+  const boccolaDoc = partDoc(
+    "BoccolaGuida",
+    "CAD/BoccolaGuida.SLDPRT",
+    "Export/boccola-guida.jpg",
+    boccola.operations,
+    boccola.variables,
+  )
+  const assieme: SolidWorksDocumentPayload = {
+    schemaVersion: 2,
+    units: "mm",
+    document: {
+      type: "assembly",
+      name: "AssiemeStaffa",
+      attachToActive: false,
+      savePath: "CAD/AssiemeStaffa.SLDASM",
+      snapshotPath: "Export/assieme-staffa.jpg",
+      snapshotView: "*Isometric",
+    },
+    variables: [],
+    configurations: [],
+    operations: [
+      {
+        id: "c1",
+        type: "component",
+        name: "StaffaFissaggio",
+        path: "CAD/StaffaFissaggio.SLDPRT",
+        x: 0,
+        y: 0,
+        z: 0,
+        fix: true,
+      },
+      {
+        id: "c2",
+        type: "component",
+        name: "BoccolaGuida",
+        path: "CAD/BoccolaGuida.SLDPRT",
+        x: 40,
+        y: 20,
+        z: 20,
+      },
+      {
+        id: "m1",
+        type: "mate",
+        name: "ConcBoccolaForo",
+        mateType: "concentric",
+        component1: "c2",
+        component2: "c1",
+        entity1: "inner",
+        entity2: "inner",
+        diameter: 10.2,
+        align: "aligned",
+      },
+      {
+        id: "m2",
+        type: "mate",
+        name: "CoincBoccolaBoss",
+        mateType: "coincident",
+        component1: "c2",
+        component2: "c1",
+        entity1: "bottom",
+        entity2: "pad",
+        align: "anti",
+      },
+      { id: "i1", type: "inspect", name: "Ispeziona" },
+    ],
+  }
+  const tavola: SolidWorksDocumentPayload = {
+    schemaVersion: 2,
+    units: "mm",
+    document: {
+      type: "drawing",
+      name: "TavolaStaffa",
+      attachToActive: false,
+      savePath: "Disegni/TavolaStaffa.SLDDRW",
+      snapshotPath: "Export/tavola-staffa.jpg",
+      sheetFormat: "A3",
+    },
+    variables: [],
+    configurations: [],
+    operations: [
+      {
+        id: "sf1",
+        type: "sheetFormat",
+        name: "CartiglioCM",
+        format: "A3",
+      },
+      {
+        id: "v1",
+        type: "standardViews",
+        name: "VisteStandard",
+        model: "CAD/AssiemeStaffa.SLDASM",
+        firstAngle: true,
+        includeIso: true,
+      },
+      { id: "d1", type: "modelDimensions", name: "Quote" },
+      {
+        id: "n1",
+        type: "annotation",
+        name: "Nota",
+        text: "Staffa di fissaggio L — piastra 80×50×8, parete 40, boss Ø16, boccola Ø16/10.2. Cartiglio PARTE_A3_CM.",
+        x: 0.02,
+        y: 0.27,
+      },
+    ],
+  }
+  return {
+    job: [staffaDoc, boccolaDoc, assieme, tavola],
+    summary:
+      `${staffa.summary} Boccola Ø16/10.2×12 mm. Assieme con 2 mate di faccia ` +
+      `(concentrico foro Ø10.2, coincidente sul pad). Tavola A3 con Cartiglio_CM.`,
+  }
+}
+
+export function isFixtureKitPrompt(prompt: string): boolean {
+  const lower = prompt.toLowerCase()
+  const staffa = /staffa|bracket|fissaggio|fixture|l-?bracket/.test(lower)
+  const kit = /assieme|tavola|disegno|boccola|bushing|kit|complesso|parete|rib|cartiglio/.test(
+    lower,
+  )
+  return (staffa && kit) || /progetto complesso|staffa a l/.test(lower)
+}
+
 export function interpretDemo(prompt: string): InterpretResult {
   const text = prompt.trim()
   const lower = text.toLowerCase()
+
+  if (isFixtureKitPrompt(text) || /staffa a l|l-?bracket/.test(lower)) {
+    const kit = fixtureKit()
+    const payload = kit.job[0]
+    const dfm: DfmIssue[] = kit.job.flatMap((d) => runDfm(d))
+    return {
+      summary: kit.summary,
+      source: "demo",
+      operations: kit.job.flatMap((d) => d.operations),
+      payload,
+      job: kit.job,
+      dfm,
+    }
+  }
 
   let built: {
     operations: CadOperation[]
@@ -208,14 +483,8 @@ export function interpretDemo(prompt: string): InterpretResult {
     const p = pin(D, L)
     built = { ...p, name: "Perno", type: "part" }
   } else if (/staffa|bracket/.test(lower)) {
-    const dims = [...text.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => num(m[1], 0))
-    const L = dims[0] || 40
-    const W = dims[1] || 25
-    const T = dims[2] || 4
-    const hole = text.match(/[Øø]\s*(\d+(?:[.,]\d+)?)/)
-    const D = num(hole?.[1], 0) || 8
-    const p = plate(L, W, T, D, undefined, true)
-    built = { ...p, name: "Staffa", type: "part", summary: `Staffa ${L} × ${W} × ${T} mm, foro Ø${D}.` }
+    const s = lBracketStaffa()
+    built = { ...s, name: "StaffaFissaggio", type: "part" }
   } else if (plateMatch) {
     const dims = [...text.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => num(m[1], 0))
     const L = dims[0] || 80
@@ -251,10 +520,20 @@ export function interpretDemo(prompt: string): InterpretResult {
     }
   }
 
+  const ext =
+    built.type === "assembly" ? "SLDASM" : built.type === "drawing" ? "SLDDRW" : "SLDPRT"
+  const folder = built.type === "drawing" ? "Disegni" : "CAD"
   const payload: SolidWorksDocumentPayload = {
     schemaVersion: 2,
     units: "mm",
-    document: { type: built.type, name: built.name, attachToActive: false },
+    document: {
+      type: built.type,
+      name: built.name,
+      attachToActive: false,
+      savePath: `${folder}/${built.name}.${ext}`,
+      snapshotPath: `Export/${built.name}.jpg`,
+      snapshotView: "*Isometric",
+    },
     variables: built.variables,
     configurations: [],
     operations: built.operations,

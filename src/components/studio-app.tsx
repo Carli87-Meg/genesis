@@ -36,6 +36,7 @@ import {
 } from "@/lib/payload"
 
 const EXAMPLES = [
+  "Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM",
   "Piastra 80 × 50 × 8 mm con 4 fori Ø6 agli angoli, raccordi R1",
   "Albero Ø20 mm, lunghezza 80 mm, raccordi R1 alle estremità",
   "Boccola: Ø30 esterno, Ø16 interno, altezza 25 mm",
@@ -71,6 +72,8 @@ export function StudioApp() {
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [ops, setOps] = useState<TreeOp[]>([])
   const [payload, setPayload] = useState<SolidWorksDocumentPayload | null>(null)
+  const [job, setJob] = useState<SolidWorksDocumentPayload[] | null>(null)
+  const [sendProgress, setSendProgress] = useState<string | null>(null)
   const [dfm, setDfm] = useState<InterpretResult["dfm"]>([])
   const [source, setSource] = useState<"demo" | "openrouter" | null>(null)
   const [sendOpen, setSendOpen] = useState(false)
@@ -132,6 +135,7 @@ export function StudioApp() {
       ])
       setOps(data.operations.map((o) => ({ ...o, status: "accepted" as const })))
       setPayload(data.payload)
+      setJob(data.job && data.job.length > 1 ? data.job : null)
       setDfm(data.dfm)
       setSource(data.source)
     } catch (err) {
@@ -165,34 +169,76 @@ export function StudioApp() {
 
   async function sendToSolidWorks() {
     const active = ops.filter((o) => o.status !== "discarded")
-    if (active.length === 0) return
-    const body: SolidWorksDocumentPayload = payload
-      ? { ...payload, operations: active }
-      : {
-          schemaVersion: 2,
-          units: "mm",
-          document: { type: "part", name: "Pezzo", attachToActive: false },
-          variables: [],
-          configurations: [],
-          operations: active,
-        }
+    if (active.length === 0 && !job) return
+    const docs: SolidWorksDocumentPayload[] =
+      job && job.length > 1
+        ? job.map(ensureSavePath)
+        : [
+            ensureSavePath(
+              payload
+                ? { ...payload, operations: active }
+                : {
+                    schemaVersion: 2,
+                    units: "mm",
+                    document: { type: "part", name: "Pezzo", attachToActive: false },
+                    variables: [],
+                    configurations: [],
+                    operations: active,
+                  },
+            ),
+          ]
     setSendBusy(true)
     setBridgeErr(null)
     setBridgeResult(null)
+    setSendProgress(null)
     setSendOpen(true)
+    const mergedSteps: BridgeResponse["steps"] = []
+    let last: BridgeResponse | null = null
     try {
-      const res = await fetch("/api/solidworks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payload: body, bridgeUrl: settings.bridgeUrl }),
-      })
-      const data = (await res.json()) as BridgeResponse
-      setBridgeResult(data)
-      if (!data.ok) setBridgeErr(data.error || "Invio fallito")
+      for (let i = 0; i < docs.length; i++) {
+        const doc = docs[i]
+        setSendProgress(
+          `Documento ${i + 1}/${docs.length}: ${doc.document.name} (${doc.document.type})`,
+        )
+        const res = await fetch("/api/solidworks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload: doc, bridgeUrl: settings.bridgeUrl }),
+        })
+        const data = (await res.json()) as BridgeResponse
+        last = data
+        for (const s of data.steps ?? []) mergedSteps.push(s)
+        if (!data.ok) {
+          setBridgeErr(data.error || `Invio fallito su ${doc.document.name}`)
+          setBridgeResult({ ...data, steps: mergedSteps })
+          return
+        }
+      }
+      if (last) setBridgeResult({ ...last, steps: mergedSteps })
     } catch (err) {
       setBridgeErr(err instanceof Error ? err.message : String(err))
     } finally {
       setSendBusy(false)
+      setSendProgress(null)
+    }
+  }
+
+  function ensureSavePath(p: SolidWorksDocumentPayload): SolidWorksDocumentPayload {
+    if (p.document.savePath) return p
+    const ext =
+      p.document.type === "assembly"
+        ? "SLDASM"
+        : p.document.type === "drawing"
+          ? "SLDDRW"
+          : "SLDPRT"
+    const folder = p.document.type === "drawing" ? "Disegni" : "CAD"
+    return {
+      ...p,
+      document: {
+        ...p.document,
+        savePath: `${folder}/${p.document.name}.${ext}`,
+        snapshotPath: p.document.snapshotPath ?? `Export/${p.document.name}.jpg`,
+      },
     }
   }
 
@@ -233,7 +279,7 @@ export function StudioApp() {
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Badge variant={keyOn ? "default" : "secondary"}>
-            {keyOn ? settings.openRouterKey.slice(0, 12) + "…" : "Demo"}
+            {keyOn ? "OpenRouter" : "Demo"}
           </Badge>
           <Button
             type="button"
@@ -316,7 +362,7 @@ export function StudioApp() {
               <Textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Piastra 80 × 50 × 8 mm…"
+                placeholder="Staffa a L 80×50×8 mm, parete 40 mm, boccola e tavola A3…"
                 className="min-h-[72px] resize-none"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -446,6 +492,7 @@ export function StudioApp() {
               {source && (
                 <p className="px-1 text-[11px] text-muted-foreground">
                   Fonte: {source === "demo" ? "demo locale" : "OpenRouter"} · schema v2
+                  {job ? ` · kit ${job.length} documenti` : ""}
                 </p>
               )}
             </div>
@@ -532,7 +579,8 @@ export function StudioApp() {
           </DialogHeader>
           {sendBusy && (
             <p className="flex items-center gap-2 text-sm">
-              <Loader2 className="size-4 animate-spin" /> Esecuzione COM in corso…
+              <Loader2 className="size-4 animate-spin" />{" "}
+              {sendProgress || "Esecuzione COM in corso…"}
             </p>
           )}
           {bridgeErr && (

@@ -35,6 +35,8 @@ npm run dev
 
 «Invia a SolidWorks» chiama `POST /api/solidworks`, che inoltra al bridge su `SOLIDWORKS_BRIDGE_URL` (o l’URL in Impostazioni).
 
+Esempio più complesso in chat: *Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM*. L’app manda in sequenza parte, boccola, assieme e tavola. Le tavole usano il formato foglio **Cartiglio_CM** (`PARTE_A3_CM.slddrt` / `PARTE_A2_CM.slddrt`), non un `.drwdot` inesistente. FeatureFillet è saltato di proposito.
+
 Piastra di prova senza UI:
 
 ```powershell

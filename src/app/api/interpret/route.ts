@@ -1,4 +1,4 @@
-import { interpretDemo } from "@/lib/demo-interpreter"
+import { interpretDemo, isFixtureKitPrompt } from "@/lib/demo-interpreter"
 import { runDfm } from "@/lib/dfm"
 import type { InterpretResult, SolidWorksDocumentPayload } from "@/lib/payload"
 
@@ -8,24 +8,24 @@ Unità sempre mm.
 Forma:
 {
   "summary": "stringa italiana breve",
-  "payload": {
-    "schemaVersion": 2,
-    "units": "mm",
-    "document": { "type": "part"|"assembly"|"drawing", "name": "string", "attachToActive": false },
-    "variables": [{ "name": "L", "value": 80 }],
-    "configurations": [],
-    "operations": []
-  }
+  "payload": { ... primo documento ... },
+  "job": [ payloadParte, payloadBoccola, payloadAssieme, payloadTavola ]
 }
+Se il prompt è un pezzo unico, ometti "job" e metti tutto in payload.
+Campi document: type, name, attachToActive false, savePath relativo (CAD/Nome.SLDPRT | CAD/Nome.SLDASM | Disegni/Nome.SLDDRW), snapshotPath Export/Nome.jpg, sheetFormat "A3" sulle tavole.
 Operazioni ammesse: sketch (plane Front|Top|Right, contours rectangle|circle|line),
-extrude, cut (throughAll true per fori passanti), revolve, hole, fillet, chamfer, shell,
-pattern, component (path, x,y,z, fix), mate (coincident|concentric|distance, entity1/entity2 piani o inner/outer),
-drawingView, standardViews (model path, includeIso), modelDimensions, annotation.
+extrude (depth mm, merge), cut (throughAll true per fori passanti), revolve, hole, fillet, chamfer, shell,
+pattern, component (path, x,y,z, fix), mate (coincident|concentric, entity1/entity2: inner|outer|top|bottom|pad, diameter mm per il foro giusto),
+drawingView, standardViews (model path, includeIso, firstAngle), modelDimensions, annotation, sheetFormat (format A3|A2).
 Niente fillet se non richiesto: FeatureFillet è inaffidabile.
-Piastra: rettangolo + estrusione + cerchi + cut throughAll.
+ISO italiano: Piano superiore = XZ, estrusione lungo +Y.
+Staffa a L: piastra 80x50x8 su Top, parete 80x8 estrusa 40 mm sul bordo +Z, boss Ø16 alto 14 mm, poi 4 fori Ø6.5 agli angoli e foro guida Ø10.2 al centro (cut throughAll).
+Boccola: due cerchi Ø16 e Ø10.2 + estrusione 12 mm.
+Assieme: component staffa (fix) + boccola; mate concentrico inner-inner diameter 10.2; coincidente bottom boccola / pad staffa.
+Tavola: sheetFormat A3 (Cartiglio_CM PARTE_A3_CM), standardViews dell'assieme, modelDimensions, annotation.
+Piastra semplice: rettangolo + estrusione + cerchi + cut throughAll.
 Perno: cerchio su Top + estrusione.
-Rondella/boccola: due cerchi concentrici + estrusione.
-Assieme: component + mate. Tavola: standardViews + modelDimensions + annotation.`
+Rondella: due cerchi + estrusione.`
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -53,12 +53,27 @@ export async function POST(req: Request) {
 
   try {
     const llm = await callOpenRouter(key, model, prompt, body.previous)
+    if (isFixtureKitPrompt(prompt) && !isRichKit(llm)) {
+      const demo = interpretDemo(prompt)
+      demo.warning =
+        "OpenRouter non ha prodotto il kit (parte+boccola+assieme+tavola); uso demo locale."
+      return Response.json(demo)
+    }
     return Response.json(llm)
   } catch (err) {
     const demo = interpretDemo(prompt)
     demo.warning = `OpenRouter non disponibile, uso demo. ${err instanceof Error ? err.message : String(err)}`
     return Response.json(demo)
   }
+}
+
+function isRichKit(r: InterpretResult): boolean {
+  if ((r.job?.length ?? 0) >= 3) return true
+  const ops = r.job?.flatMap((d) => d.operations) ?? r.payload.operations
+  const hasAssy = (r.job ?? [r.payload]).some((d) => d.document.type === "assembly")
+  const hasDraw = (r.job ?? [r.payload]).some((d) => d.document.type === "drawing")
+  const hasWall = ops.some((o) => o.type === "extrude" && o.depth >= 30)
+  return hasAssy && hasDraw && hasWall
 }
 
 async function callOpenRouter(
@@ -101,9 +116,13 @@ async function callOpenRouter(
   const parsed = extractJson(content) as {
     summary?: string
     payload?: SolidWorksDocumentPayload
+    job?: SolidWorksDocumentPayload[]
   }
 
-  const payload = parsed.payload
+  const job = Array.isArray(parsed.job)
+    ? parsed.job.filter((d) => d && d.schemaVersion === 2 && Array.isArray(d.operations))
+    : undefined
+  const payload = (job && job[0]) || parsed.payload
   if (!payload || payload.schemaVersion !== 2 || !Array.isArray(payload.operations)) {
     throw new Error("JSON LLM senza payload schemaVersion 2")
   }
@@ -112,12 +131,21 @@ async function callOpenRouter(
   payload.schemaVersion = 2
   payload.variables ??= []
   payload.configurations ??= []
+  if (job) {
+    for (const d of job) {
+      d.units = "mm"
+      d.schemaVersion = 2
+      d.variables ??= []
+      d.configurations ??= []
+    }
+  }
 
   return {
     summary: parsed.summary || `Modello con ${payload.operations.length} operazioni.`,
     source: "openrouter",
-    operations: payload.operations,
+    operations: job ? job.flatMap((d) => d.operations) : payload.operations,
     payload,
+    job: job && job.length > 1 ? job : undefined,
     dfm: runDfm(payload),
   }
 }

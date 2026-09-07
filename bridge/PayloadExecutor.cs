@@ -46,6 +46,12 @@ internal sealed partial class PayloadExecutor
                 return (_steps, [], null, null, null, null);
             }
 
+            if (model.GetType() == (int)swDocumentTypes_e.swDocDRAWING &&
+                string.IsNullOrWhiteSpace(payload.Document.OpenPath))
+            {
+                ApplySheetFormat(model, payload.Document.SheetFormat ?? "A3");
+            }
+
             ApplyVariables(model, payload.Variables);
 
             foreach (var op in payload.Operations)
@@ -274,6 +280,66 @@ internal sealed partial class PayloadExecutor
         return doc;
     }
 
+    private void ApplySheetFormat(ModelDoc2 model, string? hint)
+    {
+        if (model.GetType() != (int)swDocumentTypes_e.swDocDRAWING)
+        {
+            Step("SetupSheet5", false, "non è una tavola");
+            return;
+        }
+
+        var path = TemplateLocator.SheetFormat(hint);
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            Step("SetupSheet5", false, $"Cartiglio_CM non trovato (hint={hint})");
+            return;
+        }
+
+        var drawing = (IDrawingDoc)model;
+        var name = "Foglio1";
+        try
+        {
+            if (drawing.GetCurrentSheet() is Sheet sheet)
+            {
+                name = sheet.GetName();
+            }
+        }
+        catch { /* Foglio1 */ }
+
+        var a2 = path.Contains("A2", StringComparison.OrdinalIgnoreCase);
+        var w = a2 ? 0.594 : 0.420;
+        var h = a2 ? 0.420 : 0.297;
+        const int paperUserDefined = 12;
+        const int templateCustom = 2;
+
+        var ok = false;
+        try
+        {
+            // Interop 2025: SetupSheet5(name, paper, templateIn, scale1, scale2, firstAngle, templateName, width, height, sameProp, scaleToFit)
+            ok = drawing.SetupSheet5(name, paperUserDefined, templateCustom, 1, 1, true, path, w, h, "", false);
+        }
+        catch (Exception ex)
+        {
+            Step("SetupSheet5", false, FormatEx(ex));
+        }
+
+        if (!ok)
+        {
+            try
+            {
+                ok = drawing.SetupSheet4(name, paperUserDefined, templateCustom, 1, 1, true, path, w, h, "");
+            }
+            catch (Exception ex)
+            {
+                Step("SetupSheet4", false, FormatEx(ex));
+            }
+        }
+
+        Step("SetupSheet5", ok, $"{Path.GetFileName(path)} sheet={name} {w * 1000:0}x{h * 1000:0} mm");
+        try { model.ForceRebuild3(false); } catch { /* ignore */ }
+        try { model.EditRebuild3(); } catch { /* ignore */ }
+    }
+
     private static void RenameIfPossible(ModelDoc2? doc, string name)
     {
         if (doc is null || string.IsNullOrWhiteSpace(name))
@@ -368,6 +434,12 @@ internal sealed partial class PayloadExecutor
             case "modeldimensions":
             case "model_dimensions": DoModelDimensions(model, op); break;
             case "annotation": DoAnnotation(model, op); break;
+            case "sheetformat":
+            case "sheet_format":
+            case "setupsheet":
+            case "setup_sheet":
+                ApplySheetFormat(model, op.Str("format", op.Str("path", "A3")));
+                break;
             default: Step(op.Type ?? "op", false, "Tipo operazione non supportato"); break;
         }
     }
@@ -499,11 +571,20 @@ internal sealed partial class PayloadExecutor
             else
             {
                 feat = featMgr.FeatureExtrusion3(
-                    true, false, flip, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
+                    true, flip, true, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
                     false, false, false, false, 0.0, 0.0,
                     false, false, false, false,
                     merge, true, true,
                     (int)swStartConditions_e.swStartSketchPlane, 0.0, false);
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureExtrusion3(
+                        true, false, flip, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
+                        false, false, false, false, 0.0, 0.0,
+                        false, false, false, false,
+                        merge, true, true,
+                        (int)swStartConditions_e.swStartSketchPlane, 0.0, false);
+                }
             }
         }
         catch (Exception ex)
@@ -768,8 +849,9 @@ internal sealed partial class PayloadExecutor
         model.ClearSelection2(true);
 
         var selData = CreateMark1(model);
-        var sel1 = SelectMateEntity(assy, c1, e1, append: false, selData, kind);
-        var sel2 = SelectMateEntity(assy, c2, e2, append: true, selData, kind);
+        var targetR = ToMeters(op.Num("diameter", 0), units) / 2.0;
+        var sel1 = SelectMateEntity(assy, c1, e1, append: false, selData, kind, targetR);
+        var sel2 = SelectMateEntity(assy, c2, e2, append: true, selData, kind, targetR);
         if (!sel1 || !sel2)
         {
             Step("AddMate5", false, $"Selezione fallita {c1}/{e1} ({sel1}) + {c2}/{e2} ({sel2})");
@@ -801,8 +883,8 @@ internal sealed partial class PayloadExecutor
                 foreach (var tryFlip in flip ? new[] { true, false } : new[] { false, true })
                 {
                     model.ClearSelection2(true);
-                    SelectMateEntity(assy, c1, e1, append: false, selData, kind);
-                    SelectMateEntity(assy, c2, e2, append: true, selData, kind);
+                    SelectMateEntity(assy, c1, e1, append: false, selData, kind, targetR);
+                    SelectMateEntity(assy, c2, e2, append: true, selData, kind, targetR);
                     errors = 0;
                     mate = assy.AddMate5(mateType, align, tryFlip, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
                     if (mate is null)
@@ -884,12 +966,18 @@ internal sealed partial class PayloadExecutor
         string entity,
         bool append,
         SelectData? selData,
-        string mateKind)
+        string mateKind,
+        double targetRadiusM = 0)
     {
         var e = entity.ToLowerInvariant();
         if (mateKind is "concentric" || e is "inner" or "outer" or "hole" or "foro" or "od" or "id")
         {
-            return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: mateKind is "concentric" && append), selData);
+            return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: mateKind is "concentric" && append), selData, targetRadiusM);
+        }
+
+        if (e is "pad" or "boss" or "boss-top" or "faccia-boss")
+        {
+            return SelectComponentPlanarFace(assy, key, wantTop: true, append, selData, preferSmallUpper: true);
         }
 
         if (IsTopEntity(e))
@@ -1157,7 +1245,8 @@ internal sealed partial class PayloadExecutor
         string key,
         bool wantTop,
         bool append,
-        SelectData? selData)
+        SelectData? selData,
+        bool preferSmallUpper = false)
     {
         var comp = FindComponent(assy, key);
         if (comp is null) return false;
@@ -1165,12 +1254,14 @@ internal sealed partial class PayloadExecutor
 
         IFace2? best = null;
         var bestT = wantTop ? double.MinValue : double.MaxValue;
+        var bestArea = preferSmallUpper ? double.MaxValue : double.MinValue;
         if (!TryCylinderAxis(part, out var ax, out var ay, out var az, out var px, out var py, out var pz))
         {
             ax = 0; ay = 1; az = 0;
             px = py = pz = 0;
         }
 
+        var cands = new List<(IFace2 Face, double T, double Area)>();
         try
         {
             if (AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true)) is not object[] bodies)
@@ -1208,21 +1299,46 @@ internal sealed partial class PayloadExecutor
                     if (Math.Abs(ndot) < 0.85) continue;
 
                     var t = (qx - px) * ax + (qy - py) * ay + (qz - pz) * az;
-                    if (wantTop)
-                    {
-                        if (t > bestT) { bestT = t; best = face; }
-                    }
-                    else if (t < bestT)
-                    {
-                        bestT = t;
-                        best = face;
-                    }
+                    double area = 0;
+                    try { area = face.GetArea(); } catch { area = 0; }
+                    cands.Add((face, t, area));
                 }
             }
         }
         catch
         {
             return false;
+        }
+
+        if (cands.Count == 0) return false;
+
+        if (wantTop && preferSmallUpper)
+        {
+            var tMin = cands.Min(c => c.T);
+            var upper = cands.Where(c => c.T > tMin + 0.0004 && c.Area > 2e-5).ToList();
+            if (upper.Count == 0) upper = cands.Where(c => c.T > tMin + 0.0004).ToList();
+            if (upper.Count == 0) upper = cands;
+            var pick = upper.OrderBy(c => c.Area).ThenByDescending(c => c.T).First();
+            best = pick.Face;
+            bestT = pick.T;
+            bestArea = pick.Area;
+        }
+        else if (wantTop)
+        {
+            var tMin = cands.Min(c => c.T);
+            var upper = cands.Where(c => c.T > tMin + 0.0004).ToList();
+            if (upper.Count == 0) upper = cands;
+            var pick = upper.OrderByDescending(c => c.Area).ThenByDescending(c => c.T).First();
+            best = pick.Face;
+            bestT = pick.T;
+            bestArea = pick.Area;
+        }
+        else
+        {
+            foreach (var c in cands)
+            {
+                if (c.T < bestT) { bestT = c.T; best = c.Face; bestArea = c.Area; }
+            }
         }
 
         if (best is null) return false;
@@ -1232,7 +1348,8 @@ internal sealed partial class PayloadExecutor
             var ok = corr is IEntity ent && ent.Select4(append, selData);
             if (ok)
             {
-                Step("selectFace", true, $"{key} {(wantTop ? "top" : "bottom")} t={bestT * 1000:0.02} mm");
+                Step("selectFace", true,
+                    $"{key} {(preferSmallUpper ? "pad" : wantTop ? "top" : "bottom")} t={bestT * 1000:0.02} mm area={bestArea * 1e6:0.0} mm2");
             }
 
             return ok;
@@ -1459,7 +1576,7 @@ internal sealed partial class PayloadExecutor
         return defaultInner;
     }
 
-    private bool SelectComponentCylinder(IAssemblyDoc assy, string key, bool append, bool preferInner, SelectData? selData)
+    private bool SelectComponentCylinder(IAssemblyDoc assy, string key, bool append, bool preferInner, SelectData? selData, double targetRadiusM = 0)
     {
         var comp = FindComponent(assy, key);
         if (comp is null) return false;
@@ -1467,6 +1584,7 @@ internal sealed partial class PayloadExecutor
 
         IFace2? best = null;
         var bestR = preferInner ? double.MaxValue : -1.0;
+        var bestErr = double.MaxValue;
         try
         {
             if (AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true)) is not object[] bodies)
@@ -1496,7 +1614,13 @@ internal sealed partial class PayloadExecutor
                     }
                     catch { /* keep 0 */ }
 
-                    if (preferInner)
+                    r = Math.Abs(r);
+                    if (targetRadiusM > 1e-8)
+                    {
+                        var err = Math.Abs(r - targetRadiusM);
+                        if (err < bestErr) { bestErr = err; bestR = r; best = face; }
+                    }
+                    else if (preferInner)
                     {
                         if (r < bestR) { bestR = r; best = face; }
                     }
@@ -1520,7 +1644,8 @@ internal sealed partial class PayloadExecutor
             var ok = corr is IEntity ent && ent.Select4(append, selData);
             if (ok)
             {
-                Step("selectCyl", true, $"{key} {(preferInner ? "inner" : "outer")} R={bestR * 1000:0.02} mm");
+                var mode = targetRadiusM > 1e-8 ? $"targetR={targetRadiusM * 1000:0.02}" : (preferInner ? "inner" : "outer");
+                Step("selectCyl", true, $"{key} {mode} R={bestR * 1000:0.02} mm");
             }
 
             return ok;

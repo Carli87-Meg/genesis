@@ -104,6 +104,8 @@ export type CadOperation =
       distance?: number
       align?: "aligned" | "anti" | "closest"
       flip?: boolean
+      /** mm, raggio cilindro da selezionare (foro guida vs fori di fissaggio) */
+      diameter?: number
     }
   | {
       id: string
@@ -151,6 +153,13 @@ export type CadOperation =
       x: number
       y: number
     }
+  | {
+      id: string
+      type: "sheetFormat"
+      name?: string
+      /** A2 | A3 | path to PARTE_A3_CM.slddrt */
+      format?: string
+    }
 
 export type CadVariable = { name: string; value: number; units?: string }
 
@@ -174,6 +183,8 @@ export type SolidWorksDocumentPayload = {
     snapshotPath?: string
     snapshotView?: string
     openPath?: string
+    /** Cartiglio_CM: A3, A2, or path to .slddrt */
+    sheetFormat?: string
   }
   variables: CadVariable[]
   configurations: CadConfiguration[]
@@ -197,6 +208,8 @@ export type InterpretResult = {
   warning?: string
   operations: CadOperation[]
   payload: SolidWorksDocumentPayload
+  /** Sequenza parte → boccola → assieme → tavola. Invia a SolidWorks li manda in ordine. */
+  job?: SolidWorksDocumentPayload[]
   dfm: DfmIssue[]
 }
 
@@ -250,6 +263,8 @@ export function opLabel(op: CadOperation): string {
       return "Quote modello"
     case "annotation":
       return `Nota`
+    case "sheetFormat":
+      return `Formato foglio ${op.format ?? "CM"}`
     case "clearMates":
       return "Elimina mate"
     case "inspect":
