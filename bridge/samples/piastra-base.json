@@ -1,12 +1,12 @@
-{
+﻿{
   "schemaVersion": 2,
   "units": "mm",
   "document": {
     "type": "part",
     "name": "PiastraBase",
     "attachToActive": false,
-    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/PiastraBase.SLDPRT",
-    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/parte-01.jpg",
+    "savePath": "CAD/PiastraBase.SLDPRT",
+    "snapshotPath": "Export/parte-01.jpg",
     "snapshotView": "*Isometric"
   },
   "variables": [

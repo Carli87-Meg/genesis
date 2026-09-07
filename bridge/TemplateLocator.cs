@@ -6,6 +6,7 @@ internal static class TemplateLocator
     [
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2025\templates\Parte.PRTDOT",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2025\templates\Part.PRTDOT",
+        @"C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\03_Risorse_CAD\Impostazioni_SolidWorks\Modelli del documento\Parte.prtdot",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2024\templates\Parte.PRTDOT",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2024\templates\Part.PRTDOT",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2023\templates\Parte.PRTDOT",
@@ -14,16 +15,18 @@ internal static class TemplateLocator
 
     private static readonly string[] AssemblyCandidates =
     [
-        @"C:\ProgramData\SolidWorks\SOLIDWORKS 2025\templates\MBD\assembly 0251mm to 1000mm.asmdot",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2025\templates\Assieme.ASMDOT",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2025\templates\Assembly.ASMDOT",
+        @"C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\03_Risorse_CAD\Impostazioni_SolidWorks\Modelli del documento\Assieme.asmdot",
+        @"C:\ProgramData\SolidWorks\SOLIDWORKS 2025\templates\MBD\assembly 0251mm to 1000mm.asmdot",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2024\templates\MBD\assembly 0251mm to 1000mm.asmdot",
     ];
 
     private static readonly string[] DrawingCandidates =
     [
-        @"C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\data\templates\iso.drwdot",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2025\templates\Disegno.DRWDOT",
+        @"C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\data\templates\iso.drwdot",
+        @"C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\03_Risorse_CAD\Impostazioni_SolidWorks\Modelli del documento\ACS\Disegno.drwdot",
         @"C:\ProgramData\SolidWorks\SOLIDWORKS 2025\templates\Drawing.DRWDOT",
         @"C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\lang\italian\slddrawings\iso.drwdot",
     ];

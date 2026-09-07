@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "FileLocations",
+    "attachToActive": true
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "setFileLocation",
+      "key": "DocumentTemplates",
+      "value": "C:\\ProgramData\\SolidWorks\\SOLIDWORKS 2025\\templates;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Modelli del documento"
+    },
+    {
+      "id": "s2",
+      "type": "setFileLocation",
+      "key": "SheetFormat",
+      "value": "C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Formati Foglio;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Formati_Foglio;C:\\ProgramData\\SolidWorks\\SOLIDWORKS 2025\\lang\\italian\\sheetformat"
+    },
+    {
+      "id": "s3",
+      "type": "setFileLocation",
+      "key": "DesignLibrary",
+      "value": "C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Libreria del progetto;C:\\ProgramData\\SolidWorks\\SOLIDWORKS 2025\\design library"
+    },
+    {
+      "id": "s4",
+      "type": "setFileLocation",
+      "key": "Blocks",
+      "value": "C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Blocchi"
+    },
+    {
+      "id": "s5",
+      "type": "setFileLocation",
+      "key": "Macros",
+      "value": "C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Macro_SolidWorks;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Macro"
+    },
+    {
+      "id": "s6",
+      "type": "setFileLocation",
+      "key": "MaterialDatabases",
+      "value": "C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\lang\\italian\\sldmaterials;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Database del materiale 1;C:\\ProgramData\\SolidWorks\\SOLIDWORKS 2025\\Materiali personalizzati"
+    },
+    {
+      "id": "s7",
+      "type": "setFileLocation",
+      "key": "WeldmentProfiles",
+      "value": "C:\\ProgramData\\SolidWorks\\SOLIDWORKS 2025\\weldment profiles;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Profili delle saldature"
+    },
+    {
+      "id": "s8",
+      "type": "setFileLocation",
+      "key": "WeldmentCutListTemplates",
+      "value": "C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Modelli Distinta di taglio;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Formati_Foglio\\GD_Massari\\Modelli_Distinta_di_taglio;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Formati_Foglio\\SKEMA_Massari\\Modelli_Distinta_di_taglio;C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\lang\\italian"
+    },
+    {
+      "id": "s9",
+      "type": "setFileLocation",
+      "key": "BOMTemplates",
+      "value": "C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\lang\\italian;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Formati_Foglio\\SKEMA_Massari\\Modello_distinta_BOM"
+    },
+    {
+      "id": "s10",
+      "type": "setFileLocation",
+      "key": "DraftingStandard",
+      "value": "C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Standard di disegno"
+    },
+    {
+      "id": "s11",
+      "type": "setFileLocation",
+      "key": "ReferencedDocuments",
+      "value": "C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\01_Progetti_Attivi;C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\03_Risorse_CAD\\Impostazioni_SolidWorks\\Libreria del progetto"
+    },
+    {
+      "id": "s13",
+      "type": "setFileLocation",
+      "key": "DefaultSave",
+      "value": "C:\\Users\\Carli\\.ARCHIVIO\\CADTM_BUSINESS\\00_PROGETTI_3D\\01_Progetti_Attivi\\SolidworksIA\\CAD"
+    },
+    {
+      "id": "s14",
+      "type": "setFileLocation",
+      "key": "WeldTableTemplate",
+      "value": "C:\\Program Files\\SOLIDWORKS Corp\\SOLIDWORKS\\lang\\italian"
+    },
+    { "id": "fl1", "type": "fileLocations" }
+  ]
+}

@@ -6,7 +6,7 @@ using SolidWorks.Interop.swconst;
 
 namespace SolidWorksBridge;
 
-internal sealed class PayloadExecutor
+internal sealed partial class PayloadExecutor
 {
     private readonly List<ExecStep> _steps = [];
     private readonly Dictionary<string, string> _created = new(StringComparer.OrdinalIgnoreCase);
@@ -28,6 +28,14 @@ internal sealed class PayloadExecutor
             swApp.SetUserPreferenceToggle((int)swUserPreferenceToggle_e.swInputDimValOnCreate, false);
         }
         catch { /* ignore */ }
+
+        SwPaths.EnsureProjectFolders();
+        if (!string.IsNullOrWhiteSpace(payload.Document.OpenPath))
+            payload.Document.OpenPath = SwPaths.Resolve(payload.Document.OpenPath);
+        if (!string.IsNullOrWhiteSpace(payload.Document.SavePath))
+            payload.Document.SavePath = SwPaths.Resolve(payload.Document.SavePath);
+        if (!string.IsNullOrWhiteSpace(payload.Document.SnapshotPath))
+            payload.Document.SnapshotPath = SwPaths.Resolve(payload.Document.SnapshotPath);
 
         try
         {
@@ -54,17 +62,25 @@ internal sealed class PayloadExecutor
 
             ApplyConfigurations(model, payload.Configurations);
 
-            try
+            var onlyPrefs = payload.Operations.Count > 0 && payload.Operations.TrueForAll(o =>
             {
-                model.ForceRebuild3(true);
-                Step("ForceRebuild3", true, "Ricostruzione completata");
-            }
-            catch (Exception ex)
+                var t = (o.Type ?? "").Trim().ToLowerInvariant();
+                return t is "filelocations" or "file_locations" or "setfilelocation" or "set_file_location";
+            });
+            if (!onlyPrefs)
             {
-                Step("ForceRebuild3", false, FormatEx(ex));
-            }
+                try
+                {
+                    model.ForceRebuild3(true);
+                    Step("ForceRebuild3", true, "Ricostruzione completata");
+                }
+                catch (Exception ex)
+                {
+                    Step("ForceRebuild3", false, FormatEx(ex));
+                }
 
-            try { model.ViewZoomtofit2(); } catch { /* optional */ }
+                try { model.ViewZoomtofit2(); } catch { /* optional */ }
+            }
 
             var saved = SaveIfRequested(model, payload.Document);
             var snap = SnapshotIfRequested(model, payload.Document);
@@ -341,6 +357,10 @@ internal sealed class PayloadExecutor
             case "clear_mates": DoClearMates(model); break;
             case "inspect": DoInspect(model); break;
             case "verify": DoVerifyLayout(model, op, units); break;
+            case "filelocations":
+            case "file_locations": DoFileLocations(); break;
+            case "setfilelocation":
+            case "set_file_location": DoSetFileLocation(op); break;
             case "drawingview":
             case "drawing_view": DoDrawingView(model, op); break;
             case "standardviews":
@@ -636,7 +656,7 @@ internal sealed class PayloadExecutor
             return;
         }
 
-        var path = op.Str("path");
+        var path = SwPaths.Resolve(op.Str("path"));
         if (string.IsNullOrWhiteSpace(path))
         {
             Step("AddComponent5", false, "path mancante");
@@ -1549,7 +1569,7 @@ internal sealed class PayloadExecutor
             return;
         }
 
-        var modelPath = op.Str("model");
+        var modelPath = SwPaths.Resolve(op.Str("model"));
         if (string.IsNullOrWhiteSpace(modelPath) || !File.Exists(modelPath))
         {
             Step("Create1stAngleViews2", false, $"Modello non trovato: {modelPath}");
@@ -1665,7 +1685,7 @@ internal sealed class PayloadExecutor
         var y = op.Num("y", 0.15);
         if (x > 2) x = ToMeters(x, "mm");
         if (y > 2) y = ToMeters(y, "mm");
-        var modelPath = op.Str("model");
+        var modelPath = SwPaths.Resolve(op.Str("model"));
         if (string.IsNullOrWhiteSpace(modelPath) || !File.Exists(modelPath))
         {
             Step("CreateDrawViewFromModelView", false, "Percorso modello mancante");

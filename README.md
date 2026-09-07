@@ -52,7 +52,10 @@ curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\tavola-piastra.json"
 ```
 
-I file CAD finiscono in `sw-out/` (non versionato). FeatureFillet è saltato di proposito.
+I file CAD del bridge finiscono in
+`C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\01_Progetti_Attivi\SolidworksIA\`
+(`CAD/`, `Disegni/`, `Export/`). Non in ProgramData. Override: `$env:SOLIDWORKS_OUT_DIR`.
+FeatureFillet è saltato di proposito.
 
 ## OpenRouter
 

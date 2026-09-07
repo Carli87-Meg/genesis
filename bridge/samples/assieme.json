@@ -1,12 +1,12 @@
-{
+﻿{
   "schemaVersion": 2,
   "units": "mm",
   "document": {
     "type": "assembly",
     "name": "AssiemePerno",
     "attachToActive": false,
-    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno-ok.SLDASM",
-    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-mates-01.jpg",
+    "savePath": "CAD/AssiemePerno-ok.SLDASM",
+    "snapshotPath": "Export/assieme-mates-01.jpg",
     "snapshotView": "*Isometric"
   },
   "variables": [],
@@ -16,7 +16,7 @@
       "id": "c1",
       "type": "component",
       "name": "PiastraBase",
-      "path": "C:/Users/Carli/SolidworksIA/sw-out/PiastraBase.SLDPRT",
+      "path": "CAD/PiastraBase.SLDPRT",
       "x": 0,
       "y": 0,
       "z": 0,
@@ -26,7 +26,7 @@
       "id": "c2",
       "type": "component",
       "name": "Perno",
-      "path": "C:/Users/Carli/SolidworksIA/sw-out/Perno.SLDPRT",
+      "path": "CAD/Perno.SLDPRT",
       "x": 25,
       "y": 0,
       "z": 15
@@ -35,7 +35,7 @@
       "id": "c3",
       "type": "component",
       "name": "Rondella",
-      "path": "C:/Users/Carli/SolidworksIA/sw-out/Rondella.SLDPRT",
+      "path": "CAD/Rondella.SLDPRT",
       "x": 0,
       "y": 25,
       "z": 20

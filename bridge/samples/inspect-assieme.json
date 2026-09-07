@@ -1,11 +1,11 @@
-{
+﻿{
   "schemaVersion": 2,
   "units": "mm",
   "document": {
     "type": "assembly",
     "name": "AssiemePerno",
     "attachToActive": false,
-    "openPath": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno-mated.SLDASM"
+    "openPath": "CAD/AssiemePerno-mated.SLDASM"
   },
   "variables": [],
   "configurations": [],

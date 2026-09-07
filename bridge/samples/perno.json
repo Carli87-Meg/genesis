@@ -1,12 +1,12 @@
-{
+﻿{
   "schemaVersion": 2,
   "units": "mm",
   "document": {
     "type": "part",
     "name": "Perno",
     "attachToActive": false,
-    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/Perno.SLDPRT",
-    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/parte-02.jpg",
+    "savePath": "CAD/Perno.SLDPRT",
+    "snapshotPath": "Export/parte-02.jpg",
     "snapshotView": "*Isometric"
   },
   "variables": [

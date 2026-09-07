@@ -3,6 +3,13 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
 $env:SOLIDWORKS_BRIDGE_URL = "http://127.0.0.1:47821"
+$env:SOLIDWORKS_OUT_DIR = "C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\01_Progetti_Attivi\SolidworksIA"
+New-Item -ItemType Directory -Force -Path @(
+  "$env:SOLIDWORKS_OUT_DIR\CAD",
+  "$env:SOLIDWORKS_OUT_DIR\Disegni",
+  "$env:SOLIDWORKS_OUT_DIR\Export",
+  "$env:SOLIDWORKS_OUT_DIR\Riferimenti"
+) | Out-Null
 if (-not (Test-Path "$root\.env.local")) {
   Copy-Item "$root\.env.example" "$root\.env.local"
 }

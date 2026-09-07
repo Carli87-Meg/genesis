@@ -1,12 +1,12 @@
-{
+﻿{
   "schemaVersion": 2,
   "units": "mm",
   "document": {
     "type": "drawing",
     "name": "TavolaAssieme",
     "attachToActive": false,
-    "savePath": "C:/Users/Carli/SolidworksIA/sw-out/TavolaAssieme.SLDDRW",
-    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/tavola-01.jpg"
+    "savePath": "Disegni/TavolaAssieme.SLDDRW",
+    "snapshotPath": "Export/tavola-01.jpg"
   },
   "variables": [],
   "configurations": [],
@@ -15,7 +15,7 @@
       "id": "v1",
       "type": "standardViews",
       "name": "VisteStandard",
-      "model": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno-mated.SLDASM",
+      "model": "CAD/AssiemePerno-mated.SLDASM",
       "firstAngle": true,
       "includeIso": true
     },
@@ -28,7 +28,7 @@
       "id": "n1",
       "type": "annotation",
       "name": "Cartiglio",
-      "text": "Assieme perno — piastra 80x50x8, perno Ø8x24, rondella Ø18",
+      "text": "Assieme perno â€” piastra 80x50x8, perno Ã˜8x24, rondella Ã˜18",
       "x": 0.02,
       "y": 0.01
     }

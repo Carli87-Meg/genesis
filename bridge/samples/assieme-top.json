@@ -1,12 +1,12 @@
-{
+﻿{
   "schemaVersion": 2,
   "units": "mm",
   "document": {
     "type": "assembly",
     "name": "AssiemePerno",
     "attachToActive": false,
-    "openPath": "C:/Users/Carli/SolidworksIA/sw-out/AssiemePerno-ok.SLDASM",
-    "snapshotPath": "C:/Users/Carli/SolidworksIA/sw-out/assieme-mates-03.jpg",
+    "openPath": "CAD/AssiemePerno-ok.SLDASM",
+    "snapshotPath": "Export/assieme-mates-03.jpg",
     "snapshotView": "*Top"
   },
   "variables": [],
