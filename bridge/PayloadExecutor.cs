@@ -943,7 +943,12 @@ internal sealed partial class PayloadExecutor
         var oppositeFaces = (IsTopEntity(a) && IsBottomEntity(b)) || (IsBottomEntity(a) && IsTopEntity(b));
         if (kind is "coincident" && oppositeFaces)
         {
-            return [(int)swMateAlign_e.swMateAlignANTI_ALIGNED, (int)swMateAlign_e.swMateAlignALIGNED];
+            return
+            [
+                (int)swMateAlign_e.swMateAlignANTI_ALIGNED,
+                (int)swMateAlign_e.swMateAlignALIGNED,
+                (int)swMateAlign_e.swMateAlignCLOSEST,
+            ];
         }
 
         if (kind is "concentric")
@@ -951,7 +956,12 @@ internal sealed partial class PayloadExecutor
             return [(int)swMateAlign_e.swMateAlignALIGNED, (int)swMateAlign_e.swMateAlignANTI_ALIGNED];
         }
 
-        return [(int)swMateAlign_e.swMateAlignALIGNED, (int)swMateAlign_e.swMateAlignANTI_ALIGNED];
+        return
+        [
+            (int)swMateAlign_e.swMateAlignALIGNED,
+            (int)swMateAlign_e.swMateAlignANTI_ALIGNED,
+            (int)swMateAlign_e.swMateAlignCLOSEST,
+        ];
     }
 
     private static bool IsTopEntity(string e) =>
@@ -1414,9 +1424,9 @@ internal sealed partial class PayloadExecutor
 
     private bool MateGeometryOk(IAssemblyDoc assy, string kind, string c1, string e1, string c2, string e2)
     {
-        var plate = FindBox(assy, "PiastraBase") ?? FindBox(assy, "c1");
-        var pin = FindBox(assy, "Perno") ?? FindBox(assy, "c2");
-        var wash = FindBox(assy, "Rondella") ?? FindBox(assy, "c3");
+        var plate = FindBox(assy, "PiastraBase");
+        var pin = FindBox(assy, "Perno");
+        var wash = FindBox(assy, "Rondella");
         if (plate is null) return true;
         var axis = ThicknessAxis(plate);
         var lo = axis;
