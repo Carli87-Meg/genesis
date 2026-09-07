@@ -1757,7 +1757,11 @@ internal sealed partial class PayloadExecutor
             try
             {
                 var iso = drawing.CreateDrawViewFromModelView3(modelPath, "*Isometric", 0.32, 0.10, 0);
-                Step("CreateDrawViewFromModelView", iso is not null, "*Isometric");
+                if (iso is null)
+                {
+                    iso = drawing.CreateDrawViewFromModelView3(modelPath, "*Isometrica", 0.32, 0.10, 0);
+                }
+                Step("CreateDrawViewFromModelView", iso is not null, iso is not null ? "iso" : "*Isometric/*Isometrica");
             }
             catch (Exception ex)
             {

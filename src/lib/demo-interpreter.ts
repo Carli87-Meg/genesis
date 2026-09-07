@@ -215,7 +215,6 @@ function lBracketStaffa(): {
   const holeD = 6.5
   const bossD = 16
   const boreD = 10.2
-  const bossH = 6
   const mx = 30
   const my = 12
   const wallCy = W / 2 - wallT / 2
@@ -251,21 +250,6 @@ function lBracketStaffa(): {
       merge: true,
     },
     {
-      id: "s3",
-      type: "sketch",
-      name: "SchizzoBoss",
-      plane: "Top",
-      contours: [{ kind: "circle", cx: 0, cy: 0, diameter: bossD }],
-    },
-    {
-      id: "e3",
-      type: "extrude",
-      name: "EstrusioneBoss",
-      sketch: "s3",
-      depth: T + bossH,
-      merge: true,
-    },
-    {
       id: "s4",
       type: "sketch",
       name: "SchizzoFori",
@@ -298,8 +282,8 @@ function lBracketStaffa(): {
       { name: "BoreD", value: boreD },
     ],
     summary:
-      `Staffa a L ${L}×${W}×${T} mm, parete ${wallH} mm, boss Ø${bossD}×${bossH} mm, ` +
-      `4 fori Ø${holeD} e foro guida Ø${boreD}. Senza raccordi (FeatureFillet inaffidabile).`,
+      `Staffa a L ${L}×${W}×${T} mm, parete ${wallH} mm, 4 fori Ø${holeD} e foro guida Ø${boreD} ` +
+      `(sede boccola Ø${bossD}). Senza raccordi (FeatureFillet inaffidabile).`,
   }
 }
 
@@ -371,12 +355,12 @@ function fixtureKit(): {
       {
         id: "m2",
         type: "mate",
-        name: "CoincBoccolaBoss",
+        name: "CoincBoccolaPiastra",
         mateType: "coincident",
         component1: "c2",
         component2: "c1",
         entity1: "bottom",
-        entity2: "pad",
+        entity2: "top",
         align: "anti",
       },
       { id: "i1", type: "inspect", name: "Ispeziona" },
@@ -415,7 +399,7 @@ function fixtureKit(): {
         id: "n1",
         type: "annotation",
         name: "Nota",
-        text: "Staffa di fissaggio L — piastra 80×50×8, parete 40, boss Ø16, boccola Ø16/10.2. Cartiglio PARTE_A3_CM.",
+        text: "Staffa di fissaggio L — piastra 80×50×8, parete 40, foro guida Ø10.2, boccola Ø16/10.2. Cartiglio PARTE_A3_CM.",
         x: 0.02,
         y: 0.27,
       },
@@ -425,7 +409,7 @@ function fixtureKit(): {
     job: [staffaDoc, boccolaDoc, assieme, tavola],
     summary:
       `${staffa.summary} Boccola Ø16/10.2×12 mm. Assieme con 2 mate di faccia ` +
-      `(concentrico foro Ø10.2, coincidente sul pad). Tavola A3 con Cartiglio_CM.`,
+      `(concentrico foro Ø10.2, coincidente boccola sulla piastra). Tavola A3 con Cartiglio_CM.`,
   }
 }
 
