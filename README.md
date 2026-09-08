@@ -21,8 +21,11 @@ Da PowerShell, nella cartella del progetto:
 Oppure in due terminali:
 
 ```powershell
-dotnet run --project bridge\SolidWorksBridge.csproj -c Release
+dotnet build bridge\SolidWorksBridge.csproj -c Release
+dotnet bridge\bin\Release\net8.0-windows\SolidWorksBridge.dll
 ```
+
+Su questo PC AppLocker può bloccare l’`.exe` apphost; `dotnet …\SolidWorksBridge.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
 
 ```powershell
 copy .env.example .env.local

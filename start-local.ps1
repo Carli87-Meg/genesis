@@ -15,9 +15,11 @@ if (-not (Test-Path "$root\.env.local")) {
 }
 
 Write-Host "Avvio bridge HTTP→COM su 127.0.0.1:47821"
-Start-Process -FilePath "dotnet" -ArgumentList @(
-  "run", "--project", "$root\bridge\SolidWorksBridge.csproj", "-c", "Release", "--no-launch-profile"
-) -WorkingDirectory $root
+dotnet build "$root\bridge\SolidWorksBridge.csproj" -c Release --nologo
+if ($LASTEXITCODE -ne 0) { throw "Build bridge fallita" }
+$bridgeDll = "$root\bridge\bin\Release\net8.0-windows\SolidWorksBridge.dll"
+# AppLocker sul PC blocca l'apphost .exe; il runtime `dotnet file.dll` è consentito.
+Start-Process -FilePath "dotnet" -ArgumentList @($bridgeDll) -WorkingDirectory $root
 
 Start-Sleep -Seconds 3
 Write-Host "Avvio app su 127.0.0.1:4317"
