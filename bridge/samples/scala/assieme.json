@@ -29,7 +29,7 @@
       "path": "CAD/FiancataDx.SLDPRT",
       "x": 0,
       "y": 0,
-      "z": 708
+      "z": 732
     },
     {
       "id": "cS1",
@@ -37,8 +37,8 @@
       "name": "Scalino1",
       "path": "CAD/Scalino1.SLDPRT",
       "x": -220,
-      "y": 20,
-      "z": 354
+      "y": 0,
+      "z": 724
     },
     {
       "id": "cS2",
@@ -46,15 +46,15 @@
       "name": "Scalino2",
       "path": "CAD/Scalino2.SLDPRT",
       "x": 220,
-      "y": 20,
-      "z": 354
+      "y": 0,
+      "z": 724
     },
     {
       "id": "cP",
       "type": "component",
       "name": "Piede",
       "path": "CAD/Piede.SLDPRT",
-      "x": -300,
+      "x": -260,
       "y": -20,
       "z": 0
     },
@@ -67,10 +67,31 @@
       "component2": "cSx",
       "entity1": "inner",
       "entity2": "inner",
-      "diameter": 8
+      "diameter": 8,
+      "holeX": -220
     },
     {
       "id": "m2",
+      "type": "mate",
+      "name": "LuceS1Sx",
+      "mateType": "coincident",
+      "component1": "cS1",
+      "component2": "cSx",
+      "entity1": "zmin",
+      "entity2": "zmax"
+    },
+    {
+      "id": "m3",
+      "type": "mate",
+      "name": "ParS1Sx",
+      "mateType": "parallel",
+      "component1": "cS1",
+      "component2": "cSx",
+      "entity1": "xmax",
+      "entity2": "xmax"
+    },
+    {
+      "id": "m4",
       "type": "mate",
       "name": "ConcS1Dx",
       "mateType": "concentric",
@@ -78,10 +99,21 @@
       "component2": "cDx",
       "entity1": "inner",
       "entity2": "inner",
-      "diameter": 8
+      "diameter": 8,
+      "holeX": -220
     },
     {
-      "id": "m3",
+      "id": "m5",
+      "type": "mate",
+      "name": "LuceS1Dx",
+      "mateType": "coincident",
+      "component1": "cS1",
+      "component2": "cDx",
+      "entity1": "zmax",
+      "entity2": "zmin"
+    },
+    {
+      "id": "m6",
       "type": "mate",
       "name": "ConcS2Sx",
       "mateType": "concentric",
@@ -89,39 +121,60 @@
       "component2": "cSx",
       "entity1": "inner",
       "entity2": "inner",
-      "diameter": 8
+      "diameter": 8,
+      "holeX": 220
     },
     {
-      "id": "m4",
+      "id": "m7",
       "type": "mate",
-      "name": "ConcS2Dx",
-      "mateType": "concentric",
-      "component1": "cS2",
-      "component2": "cDx",
-      "entity1": "inner",
-      "entity2": "inner",
-      "diameter": 8
-    },
-    {
-      "id": "m5",
-      "type": "mate",
-      "name": "CoincS1Sx",
+      "name": "LuceS2Sx",
       "mateType": "coincident",
-      "component1": "cS1",
+      "component1": "cS2",
       "component2": "cSx",
-      "entity1": "bottom",
-      "entity2": "top"
+      "entity1": "zmin",
+      "entity2": "zmax"
     },
     {
-      "id": "m6",
+      "id": "m8",
       "type": "mate",
-      "name": "CoincPiedeSx",
+      "name": "ParS2Sx",
+      "mateType": "parallel",
+      "component1": "cS2",
+      "component2": "cSx",
+      "entity1": "xmax",
+      "entity2": "xmax"
+    },
+    {
+      "id": "mP1",
+      "type": "mate",
+      "name": "PiedeY",
       "mateType": "coincident",
       "component1": "cP",
       "component2": "cSx",
-      "entity1": "top",
-      "entity2": "bottom"
+      "entity1": "ymax",
+      "entity2": "ymin"
     },
-    { "id": "v1", "type": "inspect" }
+    {
+      "id": "mP2",
+      "type": "mate",
+      "name": "PiedeX",
+      "mateType": "coincident",
+      "component1": "cP",
+      "component2": "cSx",
+      "entity1": "xmin",
+      "entity2": "xmin"
+    },
+    {
+      "id": "mP3",
+      "type": "mate",
+      "name": "PiedeFront",
+      "mateType": "coincident",
+      "component1": "cP",
+      "component2": "cSx",
+      "entity1": "Front",
+      "entity2": "Front"
+    },
+    { "id": "v1", "type": "inspect" },
+    { "id": "v2", "type": "verify" }
   ]
 }

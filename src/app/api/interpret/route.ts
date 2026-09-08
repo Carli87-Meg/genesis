@@ -53,8 +53,8 @@ When the user says tavola A3 CM / Cartiglio CM: always sheetFormat A3, never a m
 If the user asks for scala / telaio / fiancate / scalini / modulo scala (not the L-bracket):
 Do NOT emit the staffa kit.
 job = each unique prismatic part, then one assembly, then drawing if tavola/A3 is asked.
-Typical module (keep under 8 documents): FiancataSx, FiancataDx (plate 40×8, length along X, 2 holes Ø8), Scalino1, Scalino2 (width × 220 × 6, 2 holes Ø8), optional Piede 80×80×8.
-Assembly: one stringer fixed; coincident face mates and concentric on Ø8 holes. Paths CAD/Name.SLDPRT.
+Typical module (keep under 8 documents): FiancataSx, FiancataDx (Front 600×40, thickness 8 along Z, 2 holes Ø8 at X=±220 through Z), Scalino1, Scalino2 (Front 220×40, 1 hole Ø8, extrude 724 along Z — same hole axis as the stringers, filling the inner gap), optional Piede 80×80×8.
+Assembly: Sx fixed; concentric Ø8 with holeX ±220; coincident zmin/zmax so treads sit in the gap; parallel xmax to lock rotation; piede ymax to stringer ymin. Paths CAD/Name.SLDPRT.
 Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.
 Unique operation ids across the whole job. No sheet metal, weldments, or imported geometry.`
 

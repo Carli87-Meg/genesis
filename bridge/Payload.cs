@@ -75,6 +75,8 @@ public sealed class CadOperation
                 : fallback;
     }
 
+    public bool Has(string name) => Extra is not null && Extra.ContainsKey(name);
+
     public double Num(string name, double fallback = 0)
     {
         var el = Field(name);

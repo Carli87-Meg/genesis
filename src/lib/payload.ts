@@ -106,6 +106,8 @@ export type CadOperation =
       flip?: boolean
       /** mm, raggio cilindro da selezionare (foro guida vs fori di fissaggio) */
       diameter?: number
+      /** mm, X del foro in coordinate pezzo (due fori Ø uguali sulle fiancate) */
+      holeX?: number
     }
   | {
       id: string

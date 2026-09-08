@@ -22,10 +22,10 @@ Oppure in due terminali:
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\skdimhost.dll
+dotnet bridge\bin\Release\net8.0-windows\stairhost.dll
 ```
 
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `skdimhost.dll`; `dotnet …\skdimhost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `stairhost.dll`; `dotnet …\stairhost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
 
 ```powershell
 copy .env.example .env.local

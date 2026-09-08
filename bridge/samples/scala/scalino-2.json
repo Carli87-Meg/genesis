@@ -15,11 +15,10 @@
       "id": "s1",
       "type": "sketch",
       "name": "SchizzoScalino",
-      "plane": "Top",
+      "plane": "Front",
       "contours": [
-        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 220, "height": 740 },
-        { "kind": "circle", "cx": 0, "cy": -354, "diameter": 8 },
-        { "kind": "circle", "cx": 0, "cy": 354, "diameter": 8 }
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 220, "height": 40 },
+        { "kind": "circle", "cx": 0, "cy": 0, "diameter": 8 }
       ]
     },
     {
@@ -27,7 +26,7 @@
       "type": "extrude",
       "name": "Estrusione",
       "sketch": "s1",
-      "depth": 6,
+      "depth": 724,
       "merge": true
     }
   ]

@@ -937,8 +937,11 @@ internal sealed partial class PayloadExecutor
 
         var selData = CreateMark1(model);
         var targetR = ToMeters(op.Num("diameter", 0), units) / 2.0;
-        var sel1 = SelectMateEntity(assy, c1, e1, append: false, selData, kind, targetR);
-        var sel2 = SelectMateEntity(assy, c2, e2, append: true, selData, kind, targetR);
+        double? pickX = op.Has("holeX") ? ToMeters(op.Num("holeX"), units) : null;
+        double? pickY = op.Has("holeY") ? ToMeters(op.Num("holeY"), units) : null;
+        double? pickZ = op.Has("holeZ") ? ToMeters(op.Num("holeZ"), units) : null;
+        var sel1 = SelectMateEntity(assy, c1, e1, append: false, selData, kind, targetR, pickX, pickY, pickZ);
+        var sel2 = SelectMateEntity(assy, c2, e2, append: true, selData, kind, targetR, pickX, pickY, pickZ);
         if (!sel1 || !sel2)
         {
             Step("AddMate5", false, $"Selezione fallita {c1}/{e1} ({sel1}) + {c2}/{e2} ({sel2})");
@@ -970,8 +973,8 @@ internal sealed partial class PayloadExecutor
                 foreach (var tryFlip in flip ? new[] { true, false } : new[] { false, true })
                 {
                     model.ClearSelection2(true);
-                    SelectMateEntity(assy, c1, e1, append: false, selData, kind, targetR);
-                    SelectMateEntity(assy, c2, e2, append: true, selData, kind, targetR);
+                    SelectMateEntity(assy, c1, e1, append: false, selData, kind, targetR, pickX, pickY, pickZ);
+                    SelectMateEntity(assy, c2, e2, append: true, selData, kind, targetR, pickX, pickY, pickZ);
                     errors = 0;
                     mate = assy.AddMate5(mateType, align, tryFlip, dist, dist, dist, 0, 0, 0, 0, 0, false, false, 0, out errors);
                     if (mate is null)
@@ -1064,7 +1067,10 @@ internal sealed partial class PayloadExecutor
         bool append,
         SelectData? selData,
         string mateKind,
-        double targetRadiusM = 0)
+        double targetRadiusM = 0,
+        double? pickX = null,
+        double? pickY = null,
+        double? pickZ = null)
     {
         var e = entity.ToLowerInvariant();
         var comp = FindComponent(assy, key);
@@ -1074,20 +1080,26 @@ internal sealed partial class PayloadExecutor
             return false;
         }
 
+        if (e is "xmin" or "xmax" or "ymin" or "ymax" or "zmin" or "zmax")
+        {
+            var axis = e[0] == 'x' ? 0 : e[0] == 'y' ? 1 : 2;
+            return SelectComponentFaceMinMax(assy, key, axis, wantMax: e.EndsWith("max"), append, selData);
+        }
+
         if (mateKind is "concentric" || e is "hole" or "foro")
         {
-            return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: mateKind is "concentric" && append), selData, targetRadiusM);
+            return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: mateKind is "concentric" && append), selData, targetRadiusM, pickX, pickY, pickZ);
         }
 
         if (e is "inner" or "outer" or "od" or "id")
         {
             if (mateKind is "concentric")
             {
-                return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: true), selData, targetRadiusM);
+                return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: true), selData, targetRadiusM, pickX, pickY, pickZ);
             }
 
             return SelectComponentPlanarFace(assy, key, wantTop: e is "outer", append, selData)
-                   || SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: true), selData, targetRadiusM);
+                   || SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: true), selData, targetRadiusM, pickX, pickY, pickZ);
         }
 
         if (e is "pad" or "boss" or "boss-top" or "faccia-boss")
@@ -1166,6 +1178,7 @@ internal sealed partial class PayloadExecutor
         {
             LogComponentBoxes(assy);
             InspectMates(model, assy);
+            VerifyScalaModule(assy);
             return;
         }
 
@@ -1307,6 +1320,11 @@ internal sealed partial class PayloadExecutor
         }
 
         var plate = FindBox(assy, "PiastraBase") ?? FindBox(assy, "c1");
+        if (FindBox(assy, "FiancataSx") is not null)
+        {
+            VerifyScalaModule(assy);
+            return;
+        }
         var pin = FindBox(assy, "Perno") ?? FindBox(assy, "c2");
         var wash = FindBox(assy, "Rondella") ?? FindBox(assy, "c3");
         if (plate is null || pin is null || wash is null)
@@ -1353,6 +1371,58 @@ internal sealed partial class PayloadExecutor
     {
         var c = FindComponent(assy, key);
         return c is null ? null : ReadBoxMm(c);
+    }
+
+    /// <summary>
+    /// Modulo scala: due fiancate parallele, scalini che riempiono la luce, fori coassiali Z.
+    /// </summary>
+    private void VerifyScalaModule(IAssemblyDoc assy)
+    {
+        var sx = FindBox(assy, "FiancataSx");
+        var dx = FindBox(assy, "FiancataDx");
+        var s1 = FindBox(assy, "Scalino1");
+        var s2 = FindBox(assy, "Scalino2");
+        var piede = FindBox(assy, "Piede");
+        if (sx is null || dx is null || s1 is null || s2 is null)
+        {
+            Step("verifyScala", false, $"box mancanti sx={sx is not null} dx={dx is not null} s1={s1 is not null} s2={s2 is not null}");
+            return;
+        }
+
+        var sxZ0 = Math.Min(sx[4], sx[5]);
+        var sxZ1 = Math.Max(sx[4], sx[5]);
+        var dxZ0 = Math.Min(dx[4], dx[5]);
+        var dxZ1 = Math.Max(dx[4], dx[5]);
+        double inner0, inner1;
+        if (dxZ0 >= sxZ1 - 1)
+        {
+            inner0 = sxZ1;
+            inner1 = dxZ0;
+        }
+        else if (sxZ0 >= dxZ1 - 1)
+        {
+            inner0 = dxZ1;
+            inner1 = sxZ0;
+        }
+        else
+        {
+            Step("verifyScala", false, $"fiancate non affacciate SxZ[{sxZ0:0},{sxZ1:0}] DxZ[{dxZ0:0},{dxZ1:0}]");
+            return;
+        }
+
+        var luce = inner1 - inner0;
+        var s1Z0 = Math.Min(s1[4], s1[5]);
+        var s1Z1 = Math.Max(s1[4], s1[5]);
+        var span = s1Z1 - s1Z0;
+        var x1 = 0.5 * (s1[0] + s1[1]);
+        var x2 = 0.5 * (s2[0] + s2[1]);
+        var yOverlap = Math.Min(s1[3], sx[3]) - Math.Max(s1[2], sx[2]);
+        var flush = Math.Abs(s1Z0 - inner0) < 4 && Math.Abs(s1Z1 - inner1) < 4;
+        var holesX = Math.Abs(Math.Abs(x1) - 220) < 15 && Math.Abs(Math.Abs(x2) - 220) < 15 && x1 * x2 < 0;
+        var rails = Math.Abs((sx[1] - sx[0]) - 600) < 5 && Math.Abs((sx[3] - sx[2]) - 40) < 5;
+        var ok = luce > 400 && Math.Abs(span - luce) < 8 && flush && yOverlap > 10 && holesX && rails;
+        Step("verifyScala", ok,
+            $"luce={luce:0.0} mm spanScalino={span:0.0} flush={flush} yOverlap={yOverlap:0.0} xS1={x1:0} xS2={x2:0} piede={piede is not null}");
     }
 
     private bool SelectComponentPlanarFace(
@@ -1691,15 +1761,15 @@ internal sealed partial class PayloadExecutor
         return defaultInner;
     }
 
-    private bool SelectComponentCylinder(IAssemblyDoc assy, string key, bool append, bool preferInner, SelectData? selData, double targetRadiusM = 0)
+    private bool SelectComponentCylinder(IAssemblyDoc assy, string key, bool append, bool preferInner, SelectData? selData, double targetRadiusM = 0, double? pickX = null, double? pickY = null, double? pickZ = null)
     {
         var comp = FindComponent(assy, key);
         if (comp is null) return false;
         if (comp.GetModelDoc2() is not IPartDoc part) return false;
 
         IFace2? best = null;
-        var bestR = preferInner ? double.MaxValue : -1.0;
-        var bestErr = double.MaxValue;
+        var bestScore = double.MaxValue;
+        var bestR = 0.0;
         try
         {
             if (AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true)) is not object[] bodies)
@@ -1720,27 +1790,41 @@ internal sealed partial class PayloadExecutor
                     var isCyl = false;
                     try { isCyl = surf.IsCylinder(); } catch { continue; }
                     if (!isCyl) continue;
-                    double r = 0;
+                    double r = 0, ox = 0, oy = 0, oz = 0;
                     try
                     {
-                        var cp = surf.CylinderParams;
-                        if (cp is double[] p && p.Length >= 7) r = p[6];
-                        else if (cp is Array a && a.Length >= 7) r = Convert.ToDouble(a.GetValue(6));
+                        var cp = AsDoubles(surf.CylinderParams);
+                        if (cp is { Length: >= 7 })
+                        {
+                            ox = cp[0]; oy = cp[1]; oz = cp[2];
+                            r = Math.Abs(cp[6]);
+                        }
                     }
                     catch { /* keep 0 */ }
 
-                    r = Math.Abs(r);
-                    if (targetRadiusM > 1e-8)
+                    if (targetRadiusM > 1e-8 && Math.Abs(r - targetRadiusM) > 0.0006)
+                        continue;
+
+                    double score;
+                    if (pickX is not null || pickY is not null || pickZ is not null)
                     {
-                        var err = Math.Abs(r - targetRadiusM);
-                        if (err < bestErr) { bestErr = err; bestR = r; best = face; }
+                        score = 0;
+                        if (pickX is not null) score += Math.Abs(ox - pickX.Value);
+                        if (pickY is not null) score += Math.Abs(oy - pickY.Value);
+                        if (pickZ is not null) score += Math.Abs(oz - pickZ.Value);
                     }
-                    else if (preferInner)
+                    else if (targetRadiusM > 1e-8)
                     {
-                        if (r < bestR) { bestR = r; best = face; }
+                        score = Math.Abs(r - targetRadiusM);
                     }
-                    else if (r > bestR)
+                    else
                     {
+                        score = preferInner ? r : -r;
+                    }
+
+                    if (score < bestScore)
+                    {
+                        bestScore = score;
                         bestR = r;
                         best = face;
                     }
@@ -1761,6 +1845,84 @@ internal sealed partial class PayloadExecutor
             {
                 var mode = targetRadiusM > 1e-8 ? $"targetR={targetRadiusM * 1000:0.02}" : (preferInner ? "inner" : "outer");
                 Step("selectCyl", true, $"{key} {mode} R={bestR * 1000:0.02} mm");
+            }
+
+            return ok;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool SelectComponentFaceMinMax(
+        IAssemblyDoc assy,
+        string key,
+        int axis,
+        bool wantMax,
+        bool append,
+        SelectData? selData)
+    {
+        var comp = FindComponent(assy, key);
+        if (comp is null) return false;
+        if (comp.GetModelDoc2() is not IPartDoc part) return false;
+
+        IFace2? best = null;
+        var bestT = wantMax ? double.MinValue : double.MaxValue;
+        var bestArea = 0.0;
+        try
+        {
+            if (AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true)) is not object[] bodies)
+                return false;
+            foreach (var bObj in bodies)
+            {
+                if (bObj is not Body2 body) continue;
+                if (AsArray(body.GetFaces()) is not object[] faces) continue;
+                foreach (var fObj in faces)
+                {
+                    if (fObj is not IFace2 face) continue;
+                    ISurface? surf = null;
+                    try { surf = face.GetSurface() as ISurface; } catch { continue; }
+                    if (surf is null) continue;
+                    var isPlane = false;
+                    try { isPlane = surf.IsPlane(); } catch { continue; }
+                    if (!isPlane) continue;
+
+                    var d = AsDoubles(surf.PlaneParams);
+                    if (d is null || d.Length < 6) continue;
+                    var t = axis switch
+                    {
+                        0 => d[3],
+                        1 => d[4],
+                        _ => d[5],
+                    };
+                    double area = 0;
+                    try { area = face.GetArea(); } catch { /* ignore */ }
+                    var better = wantMax ? t > bestT + 1e-9 : t < bestT - 1e-9;
+                    var tie = Math.Abs(t - bestT) < 1e-9 && area > bestArea;
+                    if (best is null || better || tie)
+                    {
+                        bestT = t;
+                        bestArea = area;
+                        best = face;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (best is null) return false;
+        try
+        {
+            var corr = comp.GetCorresponding(best);
+            var ok = corr is IEntity ent && ent.Select4(append, selData);
+            if (ok)
+            {
+                var name = (axis == 0 ? "x" : axis == 1 ? "y" : "z") + (wantMax ? "max" : "min");
+                Step("selectFace", true, $"{key} {name} t={bestT * 1000:0.02} mm");
             }
 
             return ok;
