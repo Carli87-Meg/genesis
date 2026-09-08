@@ -1331,6 +1331,11 @@ internal sealed partial class PayloadExecutor
             VerifyScalaModule(assy);
             return;
         }
+        if (FindBox(assy, "LongheroneSx") is not null)
+        {
+            VerifyTelaioModule(assy);
+            return;
+        }
         var pin = FindBox(assy, "Perno") ?? FindBox(assy, "c2");
         var wash = FindBox(assy, "Rondella") ?? FindBox(assy, "c3");
         if (plate is null || pin is null || wash is null)
