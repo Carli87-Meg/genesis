@@ -130,6 +130,7 @@ export function StudioApp() {
   const [panelOpen, setPanelOpen] = useState(false)
   const [show3d, setShow3d] = useState(false)
   const [isLg, setIsLg] = useState(false)
+  const [sessionStored, setSessionStored] = useState(false)
   const chatEnd = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -156,7 +157,17 @@ export function StudioApp() {
     } catch {
       /* ignore */
     }
-    setReady(true)
+    void (async () => {
+      try {
+        const res = await fetch("/api/or-session?verify=1", { cache: "no-store" })
+        const data = (await res.json()) as { stored?: boolean; valid?: boolean }
+        setSessionStored(Boolean(data.stored && data.valid !== false))
+      } catch {
+        setSessionStored(false)
+      } finally {
+        setReady(true)
+      }
+    })()
   }, [])
 
   useEffect(() => {
@@ -191,7 +202,7 @@ export function StudioApp() {
   }, [messages, busy])
 
   const visibleOps = useMemo(() => ops.filter((o) => o.status !== "discarded"), [ops])
-  const keyOn = settings.openRouterKey.length > 8
+  const keyOn = settings.openRouterKey.length > 8 || sessionStored
   const canExecute = visibleOps.length > 0 || Boolean(job && job.length > 1)
 
   function liveSettings(): Settings {
@@ -250,7 +261,7 @@ export function StudioApp() {
           openRouterKey: key || undefined,
           token: key || undefined,
           model: live.model,
-          useStoredKey: Boolean(key),
+          useStoredKey: keyOn,
         }),
       })
       const data = (await res.json()) as InterpretResult & { error?: string }
@@ -418,6 +429,7 @@ export function StudioApp() {
     const clean = key.replace(/[\r\n\t]/g, "").trim()
     if (clean.length <= 8) {
       await fetch("/api/or-session", { method: "DELETE" })
+      setSessionStored(false)
       return { stored: false, valid: false as boolean | undefined, status: 0, detail: "" }
     }
     const res = await fetch("/api/or-session", {
@@ -426,12 +438,14 @@ export function StudioApp() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ openRouterKey: clean, verify }),
     })
-    return (await res.json()) as {
+    const data = (await res.json()) as {
       stored?: boolean
       valid?: boolean
       status?: number
       detail?: string
     }
+    setSessionStored(Boolean(data.stored && data.valid !== false))
+    return data
   }
 
   async function saveSettings() {
@@ -545,7 +559,7 @@ export function StudioApp() {
             <div className="mx-auto w-full max-w-2xl space-y-4 px-4 py-6">
               {messages.length === 0 && !busy && (
                 <div className="py-8 text-center sm:py-14">
-                  <p className="text-lg font-medium">Cosa vuoi fare in SolidWorks?</p>
+                  <h2 className="text-lg font-medium">Cosa vuoi fare in SolidWorks?</h2>
                   <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
                     Descrivi il pezzo o l&apos;azione. Il copilot propone operazioni parametriche,
                     poi <span className="text-foreground">Esegui</span> le manda al CAD aperto
@@ -752,11 +766,26 @@ export function StudioApp() {
                 value={draft.model}
                 onChange={(e) => setDraft((s) => ({ ...s, model: e.target.value }))}
               >
-                {OPENROUTER_MODEL_OPTIONS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
+                {(
+                  [
+                    ["consigliato", "Consigliato"],
+                    ["veloce", "Veloce"],
+                    ["qualita", "Massima qualità"],
+                    ["economico", "Economico"],
+                  ] as const
+                ).map(([tag, label]) => {
+                  const opts = OPENROUTER_MODEL_OPTIONS.filter((m) => m.tag === tag)
+                  if (opts.length === 0) return null
+                  return (
+                    <optgroup key={tag} label={label}>
+                      {opts.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
+                })}
                 {!OPENROUTER_MODEL_OPTIONS.some((m) => m.id === draft.model) && draft.model ? (
                   <option value={draft.model}>{draft.model} (salvato)</option>
                 ) : null}
