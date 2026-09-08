@@ -72,6 +72,24 @@ export function runDfm(payload: SolidWorksDocumentPayload): DfmIssue[] {
   return unique(issues)
 }
 
+/** Una parte riusata in più insert si controlla una sola volta. */
+export function runDfmJob(docs: SolidWorksDocumentPayload[]): DfmIssue[] {
+  const seen = new Set<string>()
+  const issues: DfmIssue[] = []
+  for (const d of docs) {
+    const key = (d.document.savePath || d.document.name).toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    for (const issue of runDfm(d)) {
+      issues.push({
+        ...issue,
+        message: docs.length > 1 ? `${d.document.name}: ${issue.message}` : issue.message,
+      })
+    }
+  }
+  return unique(issues)
+}
+
 function unique(issues: DfmIssue[]): DfmIssue[] {
   const seen = new Set<string>()
   return issues.filter((i) => {

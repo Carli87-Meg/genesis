@@ -37,6 +37,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Preview3D } from "@/components/preview-3d"
 import {
   DEFAULT_BRIDGE_URL,
+  COM_EXECUTE_GAP_MS,
+  summarizeBridgeSteps,
   opLabel,
   type BridgeResponse,
   type InterpretResult,
@@ -132,6 +134,7 @@ export function StudioApp() {
   const [prompt, setPrompt] = useState("")
   const [busy, setBusy] = useState(false)
   const [sendBusy, setSendBusy] = useState(false)
+  const [sendCooling, setSendCooling] = useState(false)
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [ops, setOps] = useState<TreeOp[]>([])
   const [payload, setPayload] = useState<SolidWorksDocumentPayload | null>(null)
@@ -220,6 +223,7 @@ export function StudioApp() {
   const visibleOps = useMemo(() => ops.filter((o) => o.status !== "discarded"), [ops])
   const keyOn = settings.openRouterKey.length > 8 || sessionStored
   const canExecute = visibleOps.length > 0 || Boolean(job && job.length > 1)
+  const sendLocked = sendBusy || sendCooling
 
   function liveSettings(): Settings {
     try {
@@ -274,6 +278,7 @@ export function StudioApp() {
           prompt: q,
           followUp: asFollowUp && Boolean(payload),
           previous: asFollowUp ? payload ?? undefined : undefined,
+          previousJob: asFollowUp && job && job.length > 1 ? job : undefined,
           openRouterKey: key || undefined,
           token: key || undefined,
           model: live.model,
@@ -385,7 +390,7 @@ export function StudioApp() {
           setSendProgress(
             `COM disconnesso, nuovo tentativo ${i + 1}/${docs.length}: ${doc.document.name}`,
           )
-          await new Promise((r) => setTimeout(r, 2500))
+          await new Promise((r) => setTimeout(r, COM_EXECUTE_GAP_MS))
           data = await postToBridge(doc)
         }
         last = data
@@ -396,17 +401,18 @@ export function StudioApp() {
           setBridgeResult({ ...data, steps: mergedSteps })
           break
         }
-                if (i < docs.length - 1) await new Promise((r) => setTimeout(r, 2800))
+        if (i < docs.length - 1) await new Promise((r) => setTimeout(r, COM_EXECUTE_GAP_MS))
       }
       if (!failed && last) setBridgeResult({ ...last, steps: mergedSteps })
+      const verifyLine = summarizeBridgeSteps(mergedSteps)
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
           error: Boolean(failed),
           text: failed
-            ? `Esecuzione interrotta: ${failed}`
-            : `Eseguito in SolidWorks: ${docs.map((d) => d.document.name).join(", ")}.`,
+            ? `Esecuzione interrotta: ${failed}\n${verifyLine}`
+            : `Eseguito in SolidWorks: ${docs.map((d) => d.document.name).join(", ")}.\n${verifyLine}`,
         },
       ])
     } catch (err) {
@@ -417,16 +423,16 @@ export function StudioApp() {
         { role: "assistant", error: true, text: `Bridge irraggiungibile: ${msg}` },
       ])
     } finally {
-      const keep = [...docs]
-        .reverse()
-        .find((d) => d.document.type === "assembly")?.document.name
+      const drawing = [...docs].reverse().find((d) => d.document.type === "drawing")
+      const assembly = [...docs].reverse().find((d) => d.document.type === "assembly")
+      const keep = drawing?.document.name || assembly?.document.name || null
       try {
         await fetch("/api/solidworks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "cleanup",
-            keep: keep || null,
+            keep,
             bridgeUrl: settings.bridgeUrl,
           }),
         })
@@ -435,6 +441,8 @@ export function StudioApp() {
       }
       setSendBusy(false)
       setSendProgress(null)
+      setSendCooling(true)
+      window.setTimeout(() => setSendCooling(false), COM_EXECUTE_GAP_MS)
     }
   }
 
@@ -696,7 +704,7 @@ export function StudioApp() {
                           type="button"
                           size="sm"
                           className="rounded-full"
-                          disabled={!canExecute || sendBusy}
+                          disabled={!canExecute || sendLocked}
                           onClick={() => void sendToSolidWorks()}
                         >
                           {sendBusy ? (
@@ -704,7 +712,7 @@ export function StudioApp() {
                           ) : (
                             <Play className="size-3.5" />
                           )}
-                          Esegui in SolidWorks
+                          {sendCooling ? "Attendi COM…" : "Esegui in SolidWorks"}
                         </Button>
                       </div>
                     )}
@@ -789,11 +797,11 @@ export function StudioApp() {
                     type="button"
                     variant="secondary"
                     className="flex-1 rounded-full sm:self-stretch"
-                    disabled={!canExecute || sendBusy}
+                    disabled={!canExecute || sendLocked}
                     onClick={() => void sendToSolidWorks()}
                   >
                     {sendBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-                    Esegui
+                    {sendCooling ? "Attendi COM…" : "Esegui"}
                   </Button>
                 </div>
               </div>
@@ -920,7 +928,7 @@ export function StudioApp() {
           <DialogHeader>
             <DialogTitle>Esegui in SolidWorks</DialogTitle>
             <DialogDescription>
-              Payload schema v2 verso il bridge locale. Un documento alla volta; se COM si stacca, ritento.
+              Payload schema v2 verso il bridge locale. Un documento alla volta, pausa 5 s. HTTP 200 non è prova di posa.
             </DialogDescription>
           </DialogHeader>
           {sendBusy && (
@@ -933,8 +941,12 @@ export function StudioApp() {
               {bridgeErr}
             </pre>
           )}
+          {sendCooling && !sendBusy && (
+            <p className="text-sm text-muted-foreground">Pausa COM 5 s prima del prossimo invio.</p>
+          )}
           {bridgeResult && (
             <div className="max-h-64 space-y-2 overflow-auto text-xs">
+              <p className="text-muted-foreground">{summarizeBridgeSteps(bridgeResult.steps)}</p>
               <p>
                 attach: {bridgeResult.attachPath || "—"} · SW {bridgeResult.version || "—"} ·{" "}
                 {bridgeResult.document || "nessun documento"}

@@ -35,4 +35,6 @@ Cosa abbiamo preso dal suo modo di lavorare (vale per ogni modello):
 5. Pezzi identici = un SLDPRT, due `component` (Astra sul modulo scala: un solo Scalino).
 6. `annotation.x/y` in metri foglio; se >2 sono millimetri.
 
+Review Astra (9 set, effort medium, $0,09): architettura ok, **needs-work** su cooldown 5 s, cleanup che tenga la **tavola**, DFM su tutto il job, follow-up con job intero, template staffa/scala separati, verify visibile (HTTP 200 ≠ posa). Applicato. Cleanup C# accetta un solo `keep`: si tiene la tavola se c’è, altrimenti l’assieme (niente rebuild DLL / SAC).
+
 Niente `:batch`, `:free`, alias `~…-latest`, né BYOK. Chiave mai in git. Con chiave, errore OpenRouter ≠ demo.

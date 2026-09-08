@@ -4,7 +4,7 @@ import type {
   InterpretResult,
   SolidWorksDocumentPayload,
 } from "./payload"
-import { runDfm } from "./dfm"
+import { runDfmJob } from "./dfm"
 
 function num(s: string | undefined, fallback: number): number {
   if (!s) return fallback
@@ -430,7 +430,7 @@ export function interpretDemo(prompt: string): InterpretResult {
   if (isFixtureKitPrompt(text) || /staffa a l|l-?bracket/.test(lower)) {
     const kit = fixtureKit()
     const payload = kit.job[0]
-    const dfm: DfmIssue[] = kit.job.flatMap((d) => runDfm(d))
+    const dfm: DfmIssue[] = runDfmJob(kit.job)
     return {
       summary: kit.summary,
       source: "demo",
@@ -523,7 +523,7 @@ export function interpretDemo(prompt: string): InterpretResult {
     configurations: [],
     operations: built.operations,
   }
-  const dfm: DfmIssue[] = runDfm(payload)
+  const dfm: DfmIssue[] = runDfmJob([payload])
 
   return {
     summary: built.summary,

@@ -241,6 +241,27 @@ export type BridgeResponse = {
 
 export const DEFAULT_BRIDGE_URL = "http://127.0.0.1:47821"
 
+/** Pausa tra /execute: sotto ~4–5 s SaveAs può dare RPC 0x80010108. */
+export const COM_EXECUTE_GAP_MS = 5000
+
+export function summarizeBridgeSteps(steps: BridgeStep[] | undefined): string {
+  if (!steps?.length) return "Nessuno step di verifica nel log COM."
+  const bits: string[] = []
+  for (const s of steps) {
+    const blob = `${s.op} ${s.detail}`
+    if (/verify|inspect/i.test(blob)) {
+      bits.push(`${s.ok ? "verify ok" : "verify FAIL"} — ${s.op}: ${s.detail}`.trim())
+    } else if (/fillet/i.test(blob) && /saltato/i.test(s.detail)) {
+      bits.push(`Fillet saltato (${s.detail})`)
+    }
+  }
+  const failed = steps.filter((s) => !s.ok)
+  const ok = steps.length - failed.length
+  const head = `COM ${ok}/${steps.length} ok.`
+  if (failed.length) bits.push(`${failed.length} step non ok.`)
+  return bits.length ? `${head} ${bits.join(" ")}` : `${head} HTTP 200 non è prova di posa o cartiglio.`
+}
+
 export function opLabel(op: CadOperation): string {
   switch (op.type) {
     case "sketch":

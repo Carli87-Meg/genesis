@@ -1,5 +1,5 @@
 import type { CadOperation, InterpretResult, SolidWorksDocumentPayload } from "./payload"
-import { runDfm } from "./dfm"
+import { runDfmJob } from "./dfm"
 
 const OP_TYPES = new Set([
   "sketch",
@@ -195,7 +195,7 @@ export function interpretFromLlmText(
       operations: jobOut ? jobOut.flatMap((d) => d.operations) : payload.operations,
       payload,
       job: jobOut,
-      dfm: runDfm(payload),
+      dfm: runDfmJob(jobOut ?? [payload]),
       model,
     },
     meta: {

@@ -7,7 +7,7 @@ import {
   stripResponseFormat,
 } from "@/lib/openrouter-models"
 import { redactSecrets, resolveOpenRouterKey } from "@/lib/or-key"
-import { runDfm } from "@/lib/dfm"
+import { runDfmJob } from "@/lib/dfm"
 import type { InterpretResult, SolidWorksDocumentPayload } from "@/lib/payload"
 
 export const maxDuration = 180
@@ -46,29 +46,29 @@ Every feature sketch MUST be fully quoted (width, height, hole Ø, offsets from 
 The bridge adds visible SolidWorks sketch dimensions (FullyDefineSketch / AddDimension2) on every ProfileFeature, including hole/cut sketches. Keep holes on a separate sketch+cut when they are not on the boss profile.
 No fillet unless the user asks: FeatureFillet is unreliable.
 
-Single part: omit "job".
-If the user asks for bushing/boccola AND drawing/tavola/A3 (kit): root document is the main part,
-"job" is an array of 4 payloads in order: part, bushing, assembly, drawing.
+Single part: omit "job". Unique operation ids across the whole job. No sheet metal, weldments, or imported geometry. When the user says tavola A3 CM / Cartiglio CM: always sheetFormat A3, never a missing .drwdot.
+
+TEMPLATES — use at most one, and only if the user request matches. Never mix them. Never emit a template the user did not ask for.
+
+Staffa a L / L-bracket / boccola / kit fissaggio:
+root is the main part; job = part, bushing, assembly, drawing.
 - Part: L-bracket 80×50×8 on Top, wall 80×8 extruded 40 mm on +Z edge, boss Ø16 height 14, 4 holes Ø6.5 at corners, guide bore Ø10.2 at center, cut throughAll. Names StaffaFissaggio, CAD/StaffaFissaggio.SLDPRT.
 - Bushing: circles Ø16 and Ø10.2, extrude 12 mm. BoccolaGuida, CAD/BoccolaGuida.SLDPRT.
-- Assembly: component staffa (fix) + boccola; concentric inner-inner diameter 10.2; coincident bottom bushing / top pad. AssiemeStaffa, CAD/AssiemeStaffa.SLDASM.
-- Drawing: document.sheetFormat "A3" (Cartiglio_CM / PARTE_A3_CM.slddrt), sheetFormat op format "A3",
-  standardViews model "CAD/AssiemeStaffa.SLDASM", modelDimensions, annotation. TavolaStaffa, Disegni/TavolaStaffa.SLDDRW.
-When the user says tavola A3 CM / Cartiglio CM: always sheetFormat A3, never a missing .drwdot.
+- Assembly: staffa (fix) + boccola; concentric inner-inner diameter 10.2; coincident bottom bushing / top pad. AssiemeStaffa, CAD/AssiemeStaffa.SLDASM.
+- Drawing: sheetFormat A3 (Cartiglio_CM / PARTE_A3_CM.slddrt), standardViews model CAD/AssiemeStaffa.SLDASM, modelDimensions, annotation. TavolaStaffa, Disegni/TavolaStaffa.SLDDRW.
 
-If the user asks for scala / telaio / fiancate / scalini / modulo scala (not the L-bracket):
-Do NOT emit the staffa kit.
-job = each unique prismatic part, then one assembly, then drawing if tavola/A3 is asked.
+Scala / telaio / fiancate / scalini / modulo scala (not the L-bracket):
+job = unique prismatic parts, then one assembly, then drawing if tavola/A3 is asked.
 Identical geometry = one SLDPRT inserted twice (two scalini → un solo Scalino.SLDPRT).
 Typical module (keep under 8 documents): FiancataSx, FiancataDx (Front 600×40, thickness 8 along Z, 2 holes Ø8 at X=±220 through Z), Scalino (Front 220×40, 1 hole Ø8, extrude 724 along Z — same hole axis as the stringers, filling the inner gap), optional Piede 80×80×8.
 Assembly: Sx fixed; concentric Ø8 with holeX ±220; coincident zmin/zmax so treads sit in the gap; parallel xmax to lock rotation; piede ymax to stringer ymin. Paths CAD/Name.SLDPRT.
-Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.
-Unique operation ids across the whole job. No sheet metal, weldments, or imported geometry.`
+Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.`
 
 type InterpretBody = {
   prompt?: string
   followUp?: boolean
   previous?: SolidWorksDocumentPayload
+  previousJob?: SolidWorksDocumentPayload[]
   openRouterKey?: string
   apiKey?: string
   token?: string
@@ -114,7 +114,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const llm = await callOpenRouter(key, model, prompt, body.followUp ? body.previous : undefined)
+    const llm = await callOpenRouter(
+      key,
+      model,
+      prompt,
+      body.followUp ? body.previousJob ?? body.previous : undefined,
+    )
     llm.hasKey = true
     llm.keySource = keySource
     llm.model = model
@@ -162,10 +167,10 @@ async function callOpenRouter(
   key: string,
   model: string,
   prompt: string,
-  previous?: SolidWorksDocumentPayload,
+  previous?: SolidWorksDocumentPayload | SolidWorksDocumentPayload[],
 ): Promise<InterpretResult> {
   const user = previous
-    ? `Documento corrente:\n${JSON.stringify(previous)}\n\nModifica richiesta:\n${prompt}`
+    ? `Job corrente (schema v2, tutti i documenti; non perdere pezzi riusati):\n${JSON.stringify(previous)}\n\nModifica richiesta:\n${prompt}`
     : prompt
 
   const messages = [
@@ -233,6 +238,6 @@ async function callOpenRouter(
   if (meta.parse === "repaired" && meta.droppedOps > 0) {
     result.warning = `JSON LLM riparato: ${meta.droppedOps} operazioni non riconosciute ignorate.`
   }
-  result.dfm = runDfm(result.payload)
+  result.dfm = runDfmJob(result.job ?? [result.payload])
   return result
 }
