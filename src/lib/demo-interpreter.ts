@@ -364,6 +364,7 @@ function fixtureKit(): {
         align: "anti",
       },
       { id: "i1", type: "inspect", name: "Ispeziona" },
+      { id: "v1", type: "verify" },
     ],
   }
   const tavola: SolidWorksDocumentPayload = {

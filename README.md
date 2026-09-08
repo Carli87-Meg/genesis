@@ -82,7 +82,7 @@ FeatureFillet è saltato di proposito.
 
 Chiave in **Impostazioni** (resta in `localStorage`; una copia locale `.openrouter-local` è gitignorata). L’app manda la chiave al server in header e nel body di `/api/interpret`. Senza chiave: interprete demo locale. **Con chiave, se OpenRouter risponde 401/errore, non parte la demo**: in chat compare l’errore e l’albero resta vuoto, così non viene creato il pezzo sbagliato. La chiave non va nel git.
 
-Modello predefinito: **Claude Sonnet 4.6** (`anthropic/claude-sonnet-4.6`) — CAD / codice, JSON schema v2, solo chiave OpenRouter. In Impostazioni: Veloce (GPT-4.1 mini o Gemini 2.5 Flash), Massima qualità (GPT-4.1). Parità MecAgent (solo flusso UI, non branding): [mecagent-parity](docs/mecagent-parity.md).
+Modello predefinito: **Claude Sonnet 4.6** (`anthropic/claude-sonnet-4.6`) — CAD / codice, JSON schema v2, solo chiave OpenRouter. In Impostazioni: Veloce (GPT-4.1 mini o Gemini 2.5 Flash), Massima qualità (GPT-4.1 o **GPT-6 Astra**, costoso, effort medium). Astra non è il default. Parità MecAgent (solo flusso UI, non branding): [mecagent-parity](docs/mecagent-parity.md). Elenco: [modelli-openrouter](docs/modelli-openrouter.md).
 
 ## Bridge COM
 

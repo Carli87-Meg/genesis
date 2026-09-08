@@ -1,11 +1,16 @@
 import { interpretDemo } from "@/lib/demo-interpreter"
 import { interpretFromLlmText } from "@/lib/llm-payload"
-import { DEFAULT_OPENROUTER_MODEL } from "@/lib/openrouter-models"
+import {
+  buildOpenRouterChatPayload,
+  DEFAULT_OPENROUTER_MODEL,
+  stripReasoning,
+  stripResponseFormat,
+} from "@/lib/openrouter-models"
 import { redactSecrets, resolveOpenRouterKey } from "@/lib/or-key"
 import { runDfm } from "@/lib/dfm"
 import type { InterpretResult, SolidWorksDocumentPayload } from "@/lib/payload"
 
-export const maxDuration = 120
+export const maxDuration = 180
 
 const SYSTEM = `You are a SolidWorks CAD compiler for Solidworks_IA.
 Understand Italian and English. Output ONLY valid JSON. No markdown, no commentary.
@@ -34,6 +39,7 @@ Planes: Front|Top|Right. ISO Italian: Piano superiore = XZ, extrude along +Y.
 Ops: sketch (plane, contours rectangle|circle|line), extrude (sketch id, depth mm, merge),
 cut (sketch id, throughAll true for holes), revolve, hole, fillet, chamfer, shell, pattern,
 component (path, x,y,z, fix), mate (coincident|concentric, component1/2, entity1/2 inner|outer|top|bottom|pad, diameter mm),
+After mates in an assembly always append {"id":"v1","type":"verify"} — COM step ok is not proof of pose.
 sheetFormat (format A3|A2), standardViews (model: assembly or part savePath, firstAngle true, includeIso true),
 modelDimensions, annotation (text, x, y).
 Every feature sketch MUST be fully quoted (width, height, hole Ø, offsets from origin/edges).
@@ -161,16 +167,11 @@ async function callOpenRouter(
     ? `Documento corrente:\n${JSON.stringify(previous)}\n\nModifica richiesta:\n${prompt}`
     : prompt
 
-  const payload = {
-    model,
-    temperature: 0.1,
-    max_tokens: 16384,
-    response_format: { type: "json_object" as const },
-    messages: [
-      { role: "system", content: SYSTEM },
-      { role: "user", content: user },
-    ],
-  }
+  const messages = [
+    { role: "system", content: SYSTEM },
+    { role: "user", content: user },
+  ]
+  let payload = buildOpenRouterChatPayload(model, messages)
 
   const headers = {
     Authorization: `Bearer ${key}`,
@@ -187,13 +188,22 @@ async function callOpenRouter(
   })
 
   if (!res.ok && (res.status === 400 || res.status === 422)) {
-    const { response_format: _, ...withoutFmt } = payload
-    void _
+    payload = stripResponseFormat(payload)
     res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       cache: "no-store",
       headers,
-      body: JSON.stringify(withoutFmt),
+      body: JSON.stringify(payload),
+    })
+  }
+
+  if (!res.ok && (res.status === 400 || res.status === 422) && payload.reasoning) {
+    payload = stripReasoning(payload)
+    res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      cache: "no-store",
+      headers,
+      body: JSON.stringify(payload),
     })
   }
 

@@ -181,6 +181,7 @@ export function interpretFromLlmText(
   const payload = payloadPair.doc
   let jobOut = jobDocs && jobDocs.length > 1 ? jobDocs : undefined
   if (jobOut) fillKitDefaults(jobOut)
+  for (const d of jobOut ?? [payload]) ensureCadInvariants(d)
   const summaryOut =
     summary ||
     (jobOut
@@ -268,6 +269,24 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
     operations,
   }
   return { doc, dropped }
+}
+
+/** Loop agentico: mate senza verify, o tavola senza iso, non basta lo step COM ok. */
+function ensureCadInvariants(doc: SolidWorksDocumentPayload) {
+  if (doc.document.type === "assembly") {
+    const hasMate = doc.operations.some((op) => op.type === "mate")
+    const hasVerify = doc.operations.some((op) => op.type === "verify")
+    if (hasMate && !hasVerify) {
+      doc.operations.push({ id: "v-auto", type: "verify" })
+    }
+  }
+  if (doc.document.type !== "drawing") return
+  if (!doc.document.sheetFormat) doc.document.sheetFormat = "A3"
+  for (const op of doc.operations) {
+    if (op.type !== "standardViews") continue
+    if (op.includeIso === undefined) op.includeIso = true
+    if (op.firstAngle === undefined) op.firstAngle = true
+  }
 }
 
 function fillKitDefaults(docs: SolidWorksDocumentPayload[]) {
