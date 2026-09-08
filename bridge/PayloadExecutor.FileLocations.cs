@@ -99,4 +99,63 @@ internal sealed partial class PayloadExecutor
 
         return missing;
     }
+
+    /// <summary>
+    /// Cartiglio_CM deve essere il primo formato foglio. Mai copie in ProgramData.
+    /// </summary>
+    private void EnsureCartiglioFileLocations()
+    {
+        if (_sw is null) return;
+        var cmDir = Path.Combine(SwPaths.RisorseCad, "Cartigli_Template", "Cartiglio_CM");
+        if (!Directory.Exists(cmDir))
+        {
+            Step("fileLocations.SheetFormat", false, $"manca {cmDir}");
+            return;
+        }
+
+        PrependFileLocation((int)swUserPreferenceStringValue_e.swFileLocationsSheetFormat, cmDir, "SheetFormat");
+        try
+        {
+            _sw.SetUserPreferenceStringValue(
+                (int)swUserPreferenceStringValue_e.swFileLocationsNewSheetFormat, cmDir);
+            var read = _sw.GetUserPreferenceStringValue(
+                (int)swUserPreferenceStringValue_e.swFileLocationsNewSheetFormat) ?? "";
+            Step("fileLocations.NewSheetFormat",
+                read.Contains("Cartiglio_CM", StringComparison.OrdinalIgnoreCase), read);
+        }
+        catch (Exception ex)
+        {
+            Step("fileLocations.NewSheetFormat", false, FormatEx(ex));
+        }
+    }
+
+    private void PrependFileLocation(int prefId, string firstDir, string key)
+    {
+        try
+        {
+            var current = _sw!.GetUserPreferenceStringValue(prefId) ?? "";
+            var parts = current
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(p => !p.Equals(firstDir, StringComparison.OrdinalIgnoreCase)
+                            && !IsProgramDataCartiglioCopy(p))
+                .ToList();
+            parts.Insert(0, firstDir);
+            var next = string.Join(";", parts);
+            _sw.SetUserPreferenceStringValue(prefId, next);
+            var read = _sw.GetUserPreferenceStringValue(prefId) ?? "";
+            var ok = read.StartsWith(firstDir, StringComparison.OrdinalIgnoreCase);
+            Step($"fileLocations.{key}", ok, read);
+        }
+        catch (Exception ex)
+        {
+            Step($"fileLocations.{key}", false, FormatEx(ex));
+        }
+    }
+
+    private static bool IsProgramDataCartiglioCopy(string path) =>
+        path.Contains(@"\ProgramData\", StringComparison.OrdinalIgnoreCase)
+        && (path.Contains("Cartiglio_CM", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("PARTE_A3_CM", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("PARTE_A2_CM", StringComparison.OrdinalIgnoreCase)
+            || path.Contains(@"\Formati Foglio", StringComparison.OrdinalIgnoreCase));
 }

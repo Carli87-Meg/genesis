@@ -276,13 +276,18 @@ internal sealed partial class PayloadExecutor
 
     private ModelDoc2? NewDrawing(ISldWorks swApp, string name)
     {
+        EnsureCartiglioFileLocations();
         CloseIdleDocuments(swApp, keepAssemblies: true);
         ModelDoc2? doc = null;
         foreach (var template in TemplateLocator.ExistingDrawingTemplates())
         {
             try
             {
-                doc = swApp.NewDrawing2(2, template, 12, 0.42, 0.297) as ModelDoc2;
+                doc = swApp.NewDrawing2(
+                    (int)swDwgPaperSizes_e.swDwgPaperA3size,
+                    template,
+                    (int)swDwgTemplates_e.swDwgTemplateA3size,
+                    0.42, 0.297) as ModelDoc2;
                 Step("NewDrawing", doc is not null, $"template={template}");
                 if (doc is not null) break;
             }
@@ -307,7 +312,11 @@ internal sealed partial class PayloadExecutor
         {
             try
             {
-                doc = swApp.NewDrawing2(0, "", 12, 0.42, 0.297) as ModelDoc2;
+                doc = swApp.NewDrawing2(
+                    (int)swDwgPaperSizes_e.swDwgPaperA3size,
+                    "",
+                    (int)swDwgTemplates_e.swDwgTemplateA3size,
+                    0.42, 0.297) as ModelDoc2;
                 Step("NewDrawing", doc is not null, "fallback NewDrawing2(empty)");
             }
             catch (Exception ex)
@@ -328,6 +337,7 @@ internal sealed partial class PayloadExecutor
             return;
         }
 
+        EnsureCartiglioFileLocations();
         var path = TemplateLocator.SheetFormat(hint);
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
@@ -335,28 +345,34 @@ internal sealed partial class PayloadExecutor
             return;
         }
 
+        if (path.Contains(@"\ProgramData\", StringComparison.OrdinalIgnoreCase))
+        {
+            Step("SetupSheet5", false, $"rifiutato path ProgramData: {path}");
+            return;
+        }
+
         var drawing = (IDrawingDoc)model;
         var name = "Foglio1";
+        Sheet? sheet = null;
         try
         {
-            if (drawing.GetCurrentSheet() is Sheet sheet)
-            {
-                name = sheet.GetName();
-            }
+            sheet = drawing.GetCurrentSheet() as Sheet;
+            if (sheet is not null) name = sheet.GetName();
         }
         catch { /* Foglio1 */ }
 
         var a2 = path.Contains("A2", StringComparison.OrdinalIgnoreCase);
         var w = a2 ? 0.594 : 0.420;
         var h = a2 ? 0.420 : 0.297;
-        const int paperUserDefined = 12;
-        const int templateCustom = 2;
+        var paper = a2
+            ? (int)swDwgPaperSizes_e.swDwgPaperA2size
+            : (int)swDwgPaperSizes_e.swDwgPaperA3size;
+        var templateCustom = (int)swDwgTemplates_e.swDwgTemplateCustom;
 
         var ok = false;
         try
         {
-            // Interop 2025: SetupSheet5(name, paper, templateIn, scale1, scale2, firstAngle, templateName, width, height, sameProp, scaleToFit)
-            ok = drawing.SetupSheet5(name, paperUserDefined, templateCustom, 1, 1, true, path, w, h, "", false);
+            ok = drawing.SetupSheet5(name, paper, templateCustom, 1, 1, true, path, w, h, "", false);
         }
         catch (Exception ex)
         {
@@ -367,7 +383,22 @@ internal sealed partial class PayloadExecutor
         {
             try
             {
-                ok = drawing.SetupSheet4(name, paperUserDefined, templateCustom, 1, 1, true, path, w, h, "");
+                ok = drawing.SetupSheet5(
+                    name,
+                    (int)swDwgPaperSizes_e.swDwgPapersUserDefined,
+                    templateCustom, 1, 1, true, path, w, h, "", false);
+            }
+            catch (Exception ex)
+            {
+                Step("SetupSheet5", false, "userDefined: " + FormatEx(ex));
+            }
+        }
+
+        if (!ok)
+        {
+            try
+            {
+                ok = drawing.SetupSheet4(name, paper, templateCustom, 1, 1, true, path, w, h, "");
             }
             catch (Exception ex)
             {
@@ -375,9 +406,46 @@ internal sealed partial class PayloadExecutor
             }
         }
 
-        Step("SetupSheet5", ok, $"{Path.GetFileName(path)} sheet={name} {w * 1000:0}x{h * 1000:0} mm");
+        try { sheet ??= drawing.GetCurrentSheet() as Sheet; } catch { /* ignore */ }
+        if (sheet is not null)
+        {
+            try { sheet.SheetFormatVisible = true; } catch { /* ignore */ }
+            try { sheet.SetTemplateName(path); } catch { /* ignore */ }
+            try { sheet.SetSheetFormatName(path); } catch { /* ignore */ }
+            try { sheet.ReloadTemplate(false); } catch { /* ignore */ }
+        }
+
         try { model.ForceRebuild3(false); } catch { /* ignore */ }
         try { model.EditRebuild3(); } catch { /* ignore */ }
+        try { model.GraphicsRedraw2(); } catch { /* ignore */ }
+
+        string applied = "";
+        try { applied = sheet?.GetTemplateName() ?? ""; } catch { /* ignore */ }
+        if (string.IsNullOrWhiteSpace(applied))
+        {
+            try { applied = sheet?.GetSheetFormatName() ?? ""; } catch { /* ignore */ }
+        }
+
+        var isCm = IsCartiglioCmPath(applied) || (ok && IsCartiglioCmPath(path));
+        if (IsDefaultSolidWorksSheet(applied))
+            isCm = false;
+        Step("SetupSheet5", isCm,
+            $"{Path.GetFileName(path)} sheet={name} applied={applied} {w * 1000:0}x{h * 1000:0} mm");
+    }
+
+    private static bool IsCartiglioCmPath(string? p)
+    {
+        if (string.IsNullOrWhiteSpace(p)) return false;
+        return p.Contains("Cartiglio_CM", StringComparison.OrdinalIgnoreCase)
+               || p.Contains("PARTE_A3_CM", StringComparison.OrdinalIgnoreCase)
+               || p.Contains("PARTE_A2_CM", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDefaultSolidWorksSheet(string? p)
+    {
+        if (string.IsNullOrWhiteSpace(p)) return false;
+        return p.Contains(@"\lang\italian\sheetformat", StringComparison.OrdinalIgnoreCase)
+               || p.Contains(@"\lang\english\sheetformat", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void RenameIfPossible(ModelDoc2? doc, string name)
@@ -2527,14 +2595,30 @@ internal sealed partial class PayloadExecutor
             try { model.ViewZoomtofit2(); } catch { /* ignore */ }
             var named = string.IsNullOrWhiteSpace(spec.SnapshotView) ? "*Isometric" : spec.SnapshotView;
             if (!named.StartsWith('*')) named = "*" + named;
+            var isDrawing = false;
+            try { isDrawing = model.GetType() == (int)swDocumentTypes_e.swDocDRAWING; } catch { /* ignore */ }
             try
             {
-                if (model.GetType() != (int)swDocumentTypes_e.swDocDRAWING)
-                {
+                if (!isDrawing)
                     ApplyStandardView(model, named);
-                }
+                else if (model is IDrawingDoc drawing && drawing.GetCurrentSheet() is Sheet sh)
+                    sh.SheetFormatVisible = true;
             }
             catch { /* drawings / named view */ }
+
+            try { model.GraphicsRedraw2(); } catch { /* ignore */ }
+            if (isDrawing)
+            {
+                ActivateModel(model);
+                try { Thread.Sleep(600); } catch { /* ignore */ }
+                if (SwWindowCapture.TryCaptureJpeg(dest, out var capDetail))
+                {
+                    Step("CaptureWindow", true, capDetail);
+                    return dest;
+                }
+
+                Step("CaptureWindow", false, capDetail);
+            }
 
             var bmp = Path.ChangeExtension(dest, ".bmp");
             var ok = model.SaveBMP(bmp, 1400, 1000);

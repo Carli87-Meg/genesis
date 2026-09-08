@@ -22,10 +22,10 @@ Oppure in due terminali:
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\cmisohost.dll
+dotnet bridge\bin\Release\net8.0-windows\cmfmthost.dll
 ```
 
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `cmisohost.dll`; `dotnet …\cmisohost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `cmfmthost.dll`; `dotnet …\cmfmthost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
 
 ```powershell
 copy .env.example .env.local
