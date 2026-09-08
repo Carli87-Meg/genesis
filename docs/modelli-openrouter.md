@@ -1,28 +1,24 @@
 # Modelli OpenRouter per CADTM
 
-Elenco al **8 settembre 2026**, da [lista modelli OpenRouter](https://openrouter.ai/api/v1/models) e [rankings](https://openrouter.ai/rankings) (uso reale fino al 7 set). I volumi (Hy4, GPT-5.6 Luna, DeepSeek V4 Flash, GLM 5.3 Flash) misurano traffico, non la qualità del JSON CAD.
+Elenco al **8 settembre 2026**. Per Solidworks_IA serve un modello che **scrive codice / JSON strutturato** (schema v2, COM, poi VBA), non un mini da chat.
 
-Solidworks_IA chiede **JSON schema v2** (operazioni parametriche, poi kit parte/boccola/assieme/tavola, in seguito VBA). Servono: JSON/tool-use, contesto lungo, **solo chiave OpenRouter** (niente BYOK Azure/Vertex).
+## Default
 
-Prezzi ≈ USD / milione di token (input / output).
+**Claude Sonnet 4.6** (`anthropic/claude-sonnet-4.6`) — CAD / codice (consigliato).
 
-## In Impostazioni
+Perché: tool-use + structured output, contesto 1M, niente seconda chiave (solo OpenRouter). GPT-4o mini ha già fallito la forma JSON della staffa a L (`{sketch:{…}}` senza `type`). I mini restano in «Veloce», non come default.
+
+Prezzi ≈ USD / milione token (in / out).
+
+## Impostazioni
 
 | Etichetta | Slug | Perché | Costo | Contesto |
 | --- | --- | --- | --- | --- |
-| **Consigliato** (default) | `openai/gpt-4.1-mini` | JSON schema + tool-use, istruzioni più ferme di 4o-mini, 1M di contesto per il kit a 4 documenti | 0,40 / 1,60 | 1,0M |
-| **Veloce** | `google/gemini-2.5-flash` | Basso tempo di risposta, structured output, 1M | 0,30 / 2,50 | 1,0M |
-| **Qualità** | `anthropic/claude-sonnet-4.6` | Miglior tool-use / schema; usalo se staffa+boccola+assieme+tavola escono incompleti | 3,00 / 15,00 | 1,0M |
-| **Economico (provato)** | `openai/gpt-4o-mini` | Già usato su questo PC per piastra e staffa; barato, 128k | 0,15 / 0,60 | 128k |
-| **Economico** | `deepseek/deepseek-v4-flash-0731` | Top di volume coding su OpenRouter, structured output, 1,3M; JSON a volte da riparare | 0,07 / 0,18 | 1,3M |
+| **CAD / codice (consigliato)** | `anthropic/claude-sonnet-4.6` | Default. Schema v2, kit 4 documenti, allineato al codice | 3,00 / 15,00 | 1,0M |
+| **Veloce** | `openai/gpt-4.1-mini` | Più economico, JSON migliore di 4o-mini | 0,40 / 1,60 | 1,0M |
+| **Massima qualità** | `openai/gpt-4.1` | Stessa classe GPT-4.1, più fedele alle quote | 2,00 / 8,00 | 1,0M |
+| **Veloce** | `google/gemini-2.5-flash` | Bassa latenza, structured output | 0,30 / 2,50 | 1,0M |
 
-## Raccomandazione CADTM
+GPT-4o mini non è più nel menu (troppo debole per questo compito). Se era salvato in Impostazioni, l’app passa a Sonnet 4.6.
 
-1. Parti da **GPT-4.1 mini**.
-2. Se il kit (4 documenti) è storto o manca la tavola A3: **Claude Sonnet 4.6**.
-3. Prove rapide / credito basso: **GPT-4o mini** (già validato) o **DeepSeek V4 Flash**.
-4. Gemini 2.5 Flash se 4.1 mini è lento.
-
-Non usare varianti `:batch`, `:free`, alias `~…-latest`, né modelli che chiedono una seconda chiave provider. GPT-4o e Claude Sonnet 4 restano selezionabili se già salvati in Impostazioni.
-
-L’app **non mette la chiave nel git**. Con chiave impostata, un errore OpenRouter non cade sulla demo.
+Niente `:batch`, `:free`, alias `~…-latest`, né BYOK. Chiave mai in git. Con chiave, errore OpenRouter ≠ demo.

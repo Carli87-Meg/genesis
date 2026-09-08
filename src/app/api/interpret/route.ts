@@ -5,40 +5,48 @@ import { redactSecrets, resolveOpenRouterKey } from "@/lib/or-key"
 import { runDfm } from "@/lib/dfm"
 import type { InterpretResult, SolidWorksDocumentPayload } from "@/lib/payload"
 
-export const maxDuration = 60
+export const maxDuration = 120
 
-const SYSTEM = `Sei un interprete CAD per Solidworks_IA.
-Rispondi SOLO con un oggetto JSON valido, senza markdown e senza testo intorno.
-Schema SolidWorksDocumentPayload versione 2, unità mm.
-Forma:
+const SYSTEM = `You are a SolidWorks CAD compiler for Solidworks_IA.
+Understand Italian and English. Output ONLY valid JSON. No markdown, no commentary.
+
+Emit a SolidWorksDocumentPayload schema v2 object (not a {summary,payload} wrapper):
 {
-  "summary": "stringa italiana breve",
-  "payload": {
-    "schemaVersion": 2,
-    "units": "mm",
-    "document": { "type": "part", "name": "Nome", "attachToActive": false, "savePath": "CAD/Nome.SLDPRT", "snapshotPath": "Export/Nome.jpg" },
-    "variables": [],
-    "configurations": [],
-    "operations": []
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part"|"assembly"|"drawing",
+    "name": "PascalCaseName",
+    "attachToActive": false,
+    "savePath": "CAD/Name.SLDPRT"|"CAD/Name.SLDASM"|"Disegni/Name.SLDDRW",
+    "snapshotPath": "Export/Name.jpg",
+    "sheetFormat": "A3"
   },
-  "job": [ payloadParte, payloadBoccola, payloadAssieme, payloadTavola ]
+  "variables": [],
+  "configurations": [],
+  "operations": [ { "id": "s1", "type": "sketch", ... } ],
+  "job": [ /* optional extra documents, same shape */ ]
 }
-schemaVersion deve essere il numero 2 (non stringa). Includi sempre operations (array, anche di un solo documento).
-Ogni operazione è un oggetto con campo "type" (sketch|extrude|cut|...), mai { "sketch": { ... } } come unica chiave.
-Se il prompt è un pezzo unico, ometti "job" e metti tutto in payload.
-Operazioni ammesse: sketch (plane Front|Top|Right, contours rectangle|circle|line),
-extrude (depth mm, merge), cut (throughAll true per fori passanti), revolve, hole, fillet, chamfer, shell,
-pattern, component (path, x,y,z, fix), mate (coincident|concentric, entity1/entity2: inner|outer|top|bottom|pad, diameter mm),
-drawingView, standardViews (model path, includeIso, firstAngle), modelDimensions, annotation, sheetFormat (format A3|A2).
-Niente fillet se non richiesto: FeatureFillet è inaffidabile.
-ISO italiano: Piano superiore = XZ, estrusione lungo +Y.
-Staffa a L: piastra 80x50x8 su Top, parete 80x8 estrusa 40 mm sul bordo +Z, boss Ø16 alto 14 mm, poi 4 fori Ø6.5 agli angoli e foro guida Ø10.2 al centro (cut throughAll).
-Boccola: due cerchi Ø16 e Ø10.2 + estrusione 12 mm.
-Assieme: component staffa (fix) + boccola; mate concentrico inner-inner diameter 10.2; coincidente bottom boccola / pad staffa.
-Tavola: sheetFormat A3, standardViews dell'assieme, modelDimensions, annotation.
-Piastra semplice: rettangolo + estrusione + cerchi + cut throughAll.
-Perno: cerchio su Top + estrusione.
-Rondella: due cerchi + estrusione.`
+schemaVersion is the number 2. units is always "mm".
+Every operation MUST have a string field "type". Never { "sketch": { ... } } as the only key.
+Sketch origin = plate center. rectangle/circle use cx,cy (not centerX, not position).
+Planes: Front|Top|Right. ISO Italian: Piano superiore = XZ, extrude along +Y.
+Ops: sketch (plane, contours rectangle|circle|line), extrude (sketch id, depth mm, merge),
+cut (sketch id, throughAll true for holes), revolve, hole, fillet, chamfer, shell, pattern,
+component (path, x,y,z, fix), mate (coincident|concentric, component1/2, entity1/2 inner|outer|top|bottom|pad, diameter mm),
+sheetFormat (format A3|A2), standardViews (model: assembly or part savePath, firstAngle true, includeIso true),
+modelDimensions, annotation (text, x, y).
+No fillet unless the user asks: FeatureFillet is unreliable.
+
+Single part: omit "job".
+If the user asks for bushing/boccola AND drawing/tavola/A3 (kit): root document is the main part,
+"job" is an array of 4 payloads in order: part, bushing, assembly, drawing.
+- Part: L-bracket 80×50×8 on Top, wall 80×8 extruded 40 mm on +Z edge, boss Ø16 height 14, 4 holes Ø6.5 at corners, guide bore Ø10.2 at center, cut throughAll. Names StaffaFissaggio, CAD/StaffaFissaggio.SLDPRT.
+- Bushing: circles Ø16 and Ø10.2, extrude 12 mm. BoccolaGuida, CAD/BoccolaGuida.SLDPRT.
+- Assembly: component staffa (fix) + boccola; concentric inner-inner diameter 10.2; coincident bottom bushing / top pad. AssiemeStaffa, CAD/AssiemeStaffa.SLDASM.
+- Drawing: document.sheetFormat "A3" (Cartiglio_CM / PARTE_A3_CM.slddrt), sheetFormat op format "A3",
+  standardViews model "CAD/AssiemeStaffa.SLDASM", modelDimensions, annotation. TavolaStaffa, Disegni/TavolaStaffa.SLDDRW.
+When the user says tavola A3 CM / Cartiglio CM: always sheetFormat A3, never a missing .drwdot.`
 
 type InterpretBody = {
   prompt?: string
@@ -94,14 +102,14 @@ export async function POST(req: Request) {
     llm.keySource = keySource
     llm.model = model
     console.info(
-      `[interpret] openrouter keySource=${keySource} keyLen=${key.length} model=${model} ops=${llm.operations.length} ms=${Date.now() - started}`,
+      `[interpret] openrouter keySource=${keySource} model=${model} ops=${llm.operations.length} ms=${Date.now() - started}`,
     )
     return Response.json(llm)
   } catch (err) {
     const raw = redactSecrets(err instanceof Error ? err.message : String(err))
     const error = openRouterUserMessage(raw)
     console.info(
-      `[interpret] FAIL keySource=${keySource} keyLen=${key.length} model=${model} ms=${Date.now() - started} ${raw.slice(0, 160)}`,
+      `[interpret] FAIL keySource=${keySource} model=${model} ms=${Date.now() - started} ${raw.slice(0, 160)}`,
     )
     return Response.json(
       {

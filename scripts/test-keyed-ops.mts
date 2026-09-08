@@ -99,3 +99,35 @@ console.log(
     payloadName: result.payload.document.name,
   }),
 )
+
+const bare = {
+  schemaVersion: 2,
+  units: "mm",
+  document: { type: "part", name: "StaffaFissaggio", savePath: "CAD/StaffaFissaggio.SLDPRT" },
+  operations: [
+    { type: "sketch", plane: "Top", contours: [{ kind: "rectangle", width: 80, height: 50, cx: 0, cy: 0 }] },
+    { type: "extrude", depth: 8, merge: true },
+  ],
+  job: [
+    {
+      schemaVersion: 2,
+      units: "mm",
+      document: { type: "part", name: "BoccolaGuida" },
+      operations: [
+        {
+          type: "sketch",
+          plane: "Top",
+          contours: [
+            { kind: "circle", diameter: 16, cx: 0, cy: 0 },
+            { kind: "circle", diameter: 10.2, cx: 0, cy: 0 },
+          ],
+        },
+        { type: "extrude", depth: 12 },
+      ],
+    },
+  ],
+}
+const bareRes = interpretFromLlmText(JSON.stringify(bare), "test")
+if (bareRes.result.payload.document.name !== "StaffaFissaggio") throw new Error("bare wrapper")
+if ((bareRes.result.job ?? []).length < 2) throw new Error("bare job")
+console.log(JSON.stringify({ bare: true, job: (bareRes.result.job ?? []).map((d) => d.document.name) }))

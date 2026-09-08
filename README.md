@@ -63,7 +63,7 @@ FeatureFillet è saltato di proposito.
 
 Chiave in **Impostazioni** (resta in `localStorage`; una copia locale `.openrouter-local` è gitignorata). L’app manda la chiave al server in header e nel body di `/api/interpret`. Senza chiave: interprete demo locale. **Con chiave, se OpenRouter risponde 401/errore, non parte la demo**: in chat compare l’errore e l’albero resta vuoto, così non viene creato il pezzo sbagliato. La chiave non va nel git.
 
-Modello predefinito: **GPT-4.1 mini** (`openai/gpt-4.1-mini`) — JSON schema, tool-use, 1M di contesto, solo chiave OpenRouter. In Impostazioni: veloce (Gemini 2.5 Flash), qualità (Claude Sonnet 4.6), economico (GPT-4o mini, già provato su CADTM, o DeepSeek V4 Flash). Nota con prezzi e perché: [modelli OpenRouter](docs/modelli-openrouter.md) nel repo; copia operativa anche in `/cursor/stores/self/docs/modelli-openrouter.md`.
+Modello predefinito: **Claude Sonnet 4.6** (`anthropic/claude-sonnet-4.6`) — CAD / codice, JSON schema v2, solo chiave OpenRouter. In Impostazioni: Veloce (GPT-4.1 mini o Gemini 2.5 Flash), Massima qualità (GPT-4.1). Nota: [modelli OpenRouter](docs/modelli-openrouter.md).
 
 ## Bridge COM
 

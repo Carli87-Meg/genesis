@@ -34,7 +34,12 @@ import {
   type SolidWorksDocumentPayload,
   type TreeOp,
 } from "@/lib/payload"
-import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_MODEL_OPTIONS } from "@/lib/openrouter-models"
+import {
+  DEFAULT_OPENROUTER_MODEL,
+  OPENROUTER_MODEL_OPTIONS,
+  SETTINGS_MODEL_REV,
+  resolveStoredModel,
+} from "@/lib/openrouter-models"
 
 const EXAMPLES = [
   "Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM",
@@ -49,12 +54,14 @@ type Settings = {
   openRouterKey: string
   model: string
   bridgeUrl: string
+  modelRev?: number
 }
 
 const DEFAULT_SETTINGS: Settings = {
   openRouterKey: "",
   model: DEFAULT_OPENROUTER_MODEL,
   bridgeUrl: DEFAULT_BRIDGE_URL,
+  modelRev: SETTINGS_MODEL_REV,
 }
 
 type ChatMsg = { role: "user" | "assistant"; text: string }
@@ -88,8 +95,16 @@ export function StudioApp() {
         const parsed = JSON.parse(raw) as Partial<Settings>
         const next = { ...DEFAULT_SETTINGS, ...parsed }
         next.openRouterKey = next.openRouterKey.replace(/[\r\n\t]/g, "").trim()
+        const rev = parsed.modelRev ?? 0
+        next.model = resolveStoredModel(parsed.model, rev)
+        next.modelRev = SETTINGS_MODEL_REV
         setSettings(next)
         setDraft(next)
+        try {
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(next))
+        } catch {
+          /* ignore */
+        }
         if (next.openRouterKey.length > 8) {
           void syncSessionKey(next.openRouterKey, false)
         }
@@ -118,6 +133,10 @@ export function StudioApp() {
           openRouterKey: (parsed.openRouterKey || settings.openRouterKey)
             .replace(/[\r\n\t]/g, "")
             .trim(),
+          model: resolveStoredModel(
+            parsed.model || settings.model,
+            parsed.modelRev ?? settings.modelRev ?? 0,
+          ),
         }
       }
     } catch {
@@ -288,6 +307,7 @@ export function StudioApp() {
     const clean: Settings = {
       ...next,
       openRouterKey: next.openRouterKey.replace(/[\r\n\t]/g, "").trim(),
+      modelRev: SETTINGS_MODEL_REV,
     }
     setDraft(clean)
     setSettings(clean)
@@ -592,11 +612,9 @@ export function StudioApp() {
           <DialogHeader>
             <DialogTitle>Impostazioni</DialogTitle>
             <DialogDescription>
-              La chiave OpenRouter resta nel browser (localStorage) e una copia locale
-              serve solo a questo PC (mai git). Senza chiave: demo. Con chiave rifiutata
-              da OpenRouter non parte la demo, così non nasce il pezzo sbagliato.
-              Modelli: consigliato / veloce / qualità / economico — dettagli nel README
-              (sezione OpenRouter) e nella nota CADTM sui modelli.
+              Chiave OpenRouter solo su questo PC (localStorage, mai git). Senza chiave: demo.
+              Con chiave, un errore OpenRouter non cade sulla demo.
+              Default: Claude Sonnet 4.6 (CAD / codice). Vedi README → OpenRouter.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

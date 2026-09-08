@@ -115,14 +115,24 @@ export function interpretFromLlmText(
     )
   }
 
-  const root = asRecord(parsed)
+  const rootRec = Array.isArray(parsed) ? null : asRecord(parsed)
+  const jobSource = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(rootRec?.job)
+      ? rootRec.job
+      : Array.isArray(rootRec?.documents)
+        ? rootRec.documents
+        : undefined
+  const root = rootRec ?? asRecord(jobSource?.[0])
   if (!root) {
     throw new Error("JSON LLM non è un oggetto")
   }
 
-  const summary = typeof root.summary === "string" ? root.summary : ""
-  const jobRaw = Array.isArray(root.job) ? root.job : undefined
-  const job = jobRaw
+  const summary =
+    (typeof root.summary === "string" && root.summary) ||
+    (typeof rootRec?.summary === "string" && rootRec.summary) ||
+    ""
+  const job = jobSource
     ?.map((d) => coerceDocument(d))
     .filter((d): d is { doc: SolidWorksDocumentPayload; dropped: number } => d !== null)
 
@@ -139,7 +149,13 @@ export function interpretFromLlmText(
     return r ? Object.keys(r).join("+") : typeof o
   })
 
-  const payloadPair = coerceDocument(root.payload) || coerceDocument(root) || job?.[0] || null
+  const nestedPayload = asRecord(root.payload)
+  const payloadPair =
+    (nestedPayload && operationsFrom(nestedPayload) ? coerceDocument(nestedPayload) : null) ||
+    (Array.isArray(root.operations) ? coerceDocument(root) : null) ||
+    coerceDocument(root) ||
+    job?.[0] ||
+    null
 
   if (!payloadPair || payloadPair.doc.operations.length === 0) {
     const jobLen = Array.isArray(root.job) ? root.job.length : 0
@@ -160,11 +176,17 @@ export function interpretFromLlmText(
     }
   }
   const payload = payloadPair.doc
-  const jobOut = jobDocs && jobDocs.length > 1 ? jobDocs : undefined
+  let jobOut = jobDocs && jobDocs.length > 1 ? jobDocs : undefined
+  if (jobOut) fillKitDefaults(jobOut)
+  const summaryOut =
+    summary ||
+    (jobOut
+      ? `Kit ${jobOut.length} documenti: ${jobOut.map((d) => d.document.name).join(", ")}.`
+      : `Modello con ${payload.operations.length} operazioni.`)
 
   return {
     result: {
-      summary: summary || `Modello con ${payload.operations.length} operazioni.`,
+      summary: summaryOut,
       source: "openrouter",
       operations: jobOut ? jobOut.flatMap((d) => d.operations) : payload.operations,
       payload,
@@ -213,6 +235,11 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
     (typeof rec.name === "string" && rec.name.trim()) ||
     defaultName(type)
 
+  let savePath = typeof documentIn.savePath === "string" ? documentIn.savePath : undefined
+  if (type === "drawing") {
+    savePath = savePath ? savePath.replace(/^CAD\//i, "Disegni/") : `Disegni/${name}.SLDDRW`
+  }
+
   const doc: SolidWorksDocumentPayload = {
     schemaVersion: 2,
     units: "mm",
@@ -220,11 +247,16 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
       type,
       name,
       attachToActive: documentIn.attachToActive === true,
-      savePath: typeof documentIn.savePath === "string" ? documentIn.savePath : undefined,
+      savePath,
       snapshotPath: typeof documentIn.snapshotPath === "string" ? documentIn.snapshotPath : undefined,
       snapshotView: typeof documentIn.snapshotView === "string" ? documentIn.snapshotView : "*Isometric",
       openPath: typeof documentIn.openPath === "string" ? documentIn.openPath : undefined,
-      sheetFormat: typeof documentIn.sheetFormat === "string" ? documentIn.sheetFormat : type === "drawing" ? "A3" : undefined,
+      sheetFormat:
+        typeof documentIn.sheetFormat === "string"
+          ? documentIn.sheetFormat
+          : type === "drawing"
+            ? "A3"
+            : undefined,
     },
     variables: Array.isArray(rec.variables) ? (rec.variables as SolidWorksDocumentPayload["variables"]) : [],
     configurations: Array.isArray(rec.configurations)
@@ -233,6 +265,26 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
     operations,
   }
   return { doc, dropped }
+}
+
+function fillKitDefaults(docs: SolidWorksDocumentPayload[]) {
+  const asm = [...docs].reverse().find((d) => d.document.type === "assembly")
+  const part = docs.find((d) => d.document.type === "part")
+  const model = asm?.document.savePath || part?.document.savePath
+  for (const d of docs) {
+    if (d.document.type !== "drawing") continue
+    if (d.document.savePath && /^CAD\//i.test(d.document.savePath)) {
+      d.document.savePath = d.document.savePath.replace(/^CAD\//i, "Disegni/")
+    }
+    if (!d.document.sheetFormat) d.document.sheetFormat = "A3"
+    if (!model) continue
+    for (const op of d.operations) {
+      if (op.type === "standardViews" || op.type === "drawingView") {
+        const rec = op as { model?: string }
+        if (!rec.model) rec.model = model
+      }
+    }
+  }
 }
 
 function unwrapKeyedOp(raw: unknown): Record<string, unknown> | null {
