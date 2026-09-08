@@ -101,31 +101,37 @@ export function StudioApp() {
   )
   const keyOn = settings.openRouterKey.length > 8
 
-  async function interpret(text: string) {
+  async function interpret(text: string, asFollowUp = false) {
     const q = text.trim()
     if (!q || busy) return
     setBusy(true)
     setPrompt("")
     setMessages((m) => [...m, { role: "user", text: q }])
     try {
+      const key = settings.openRouterKey.replace(/[\r\n\t]/g, "").trim()
       const res = await fetch("/api/interpret", {
         method: "POST",
+        cache: "no-store",
         headers: {
           "Content-Type": "application/json",
-          ...(settings.openRouterKey
+          ...(key
             ? {
-                "x-openrouter-key": settings.openRouterKey,
+                "x-openrouter-key": key.replace(/[^\x20-\x7E]/g, ""),
                 "x-openrouter-model": settings.model,
               }
             : {}),
         },
         body: JSON.stringify({
           prompt: q,
-          previous: payload ?? undefined,
+          followUp: asFollowUp && Boolean(payload),
+          previous: asFollowUp ? payload ?? undefined : undefined,
+          openRouterKey: key || undefined,
+          model: settings.model,
         }),
       })
       const data = (await res.json()) as InterpretResult & { error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const operations = data.operations ?? data.payload?.operations ?? []
       setMessages((m) => [
         ...m,
         {
@@ -133,10 +139,10 @@ export function StudioApp() {
           text: data.warning ? `${data.summary}\n${data.warning}` : data.summary,
         },
       ])
-      setOps(data.operations.map((o) => ({ ...o, status: "accepted" as const })))
+      setOps(operations.map((o) => ({ ...o, status: "accepted" as const })))
       setPayload(data.payload)
       setJob(data.job && data.job.length > 1 ? data.job : null)
-      setDfm(data.dfm)
+      setDfm(data.dfm ?? [])
       setSource(data.source)
     } catch (err) {
       setMessages((m) => [
@@ -242,15 +248,25 @@ export function StudioApp() {
     }
   }
 
+  function persistSettings(next: Settings) {
+    const clean: Settings = {
+      ...next,
+      openRouterKey: next.openRouterKey.replace(/[\r\n\t]/g, "").trim(),
+    }
+    setDraft(clean)
+    setSettings(clean)
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(clean))
+    return clean
+  }
+
   function saveSettings() {
-    setSettings(draft)
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(draft))
+    const clean = persistSettings(draft)
     setSettingsOpen(false)
-    const tail = draft.openRouterKey
-      ? `${draft.openRouterKey.slice(0, 8)}…${draft.openRouterKey.slice(-4)}`
+    const tail = clean.openRouterKey
+      ? `${clean.openRouterKey.slice(0, 8)}…${clean.openRouterKey.slice(-4)}`
       : "demo"
     setNotice(
-      draft.openRouterKey
+      clean.openRouterKey
         ? `Chiave salvata (${tail}).`
         : "Chiave rimossa. Resta la demo locale.",
     )
@@ -281,6 +297,12 @@ export function StudioApp() {
           <Badge variant={keyOn ? "default" : "secondary"}>
             {keyOn ? "OpenRouter" : "Demo"}
           </Badge>
+          {keyOn && source === "demo" && (
+            <Badge variant="outline">interprete: demo</Badge>
+          )}
+          {source === "openrouter" && (
+            <Badge variant="outline">interprete: LLM</Badge>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -352,7 +374,7 @@ export function StudioApp() {
                   variant="outline"
                   size="xs"
                   className="h-auto max-w-full whitespace-normal py-1 text-left"
-                  onClick={() => void interpret(ex)}
+                  onClick={() => void interpret(ex, false)}
                 >
                   {ex}
                 </Button>
@@ -367,7 +389,7 @@ export function StudioApp() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
-                    void interpret(prompt)
+                    void interpret(prompt, true)
                   }
                 }}
               />
@@ -375,7 +397,7 @@ export function StudioApp() {
                 type="button"
                 className="self-end"
                 disabled={busy || !prompt.trim()}
-                onClick={() => void interpret(prompt)}
+                onClick={() => void interpret(prompt, true)}
               >
                 Invia
               </Button>
@@ -491,8 +513,10 @@ export function StudioApp() {
               )}
               {source && (
                 <p className="px-1 text-[11px] text-muted-foreground">
-                  Fonte: {source === "demo" ? "demo locale" : "OpenRouter"} · schema v2
-                  {job ? ` · kit ${job.length} documenti` : ""}
+                  Fonte: {source === "demo" ? "demo locale" : "OpenRouter"}
+                {source === "openrouter" && settings.model ? ` · ${settings.model}` : ""}
+                {" · "}schema v2
+                {job ? ` · kit ${job.length} documenti` : ""}
                 </p>
               )}
             </div>
@@ -518,8 +542,13 @@ export function StudioApp() {
                   id="or-key"
                   type={showKey ? "text" : "password"}
                   placeholder="Incolla sk-or-v1-…"
+                  autoComplete="off"
                   value={draft.openRouterKey}
                   onChange={(e) => setDraft((s) => ({ ...s, openRouterKey: e.target.value }))}
+                  onBlur={() => {
+                    const trimmed = draft.openRouterKey.replace(/[\r\n\t]/g, "").trim()
+                    if (trimmed.length > 8) persistSettings({ ...draft, openRouterKey: trimmed })
+                  }}
                 />
                 <Button type="button" variant="outline" onClick={() => setShowKey((v) => !v)}>
                   {showKey ? "Nascondi" : "Mostra"}

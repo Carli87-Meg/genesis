@@ -54,4 +54,5 @@ bridge/obj/
 /sw-out/
 
 tmp-prompt.json
+tmp-interpret*.json
 bridge/tmp-*.txt

@@ -211,6 +211,9 @@ export type InterpretResult = {
   /** Sequenza parte → boccola → assieme → tavola. Invia a SolidWorks li manda in ordine. */
   job?: SolidWorksDocumentPayload[]
   dfm: DfmIssue[]
+  hasKey?: boolean
+  keySource?: "header" | "body" | "env" | "none"
+  model?: string
 }
 
 export type BridgeStep = { op: string; ok: boolean; detail: string }
@@ -271,5 +274,7 @@ export function opLabel(op: CadOperation): string {
       return "Ispeziona assieme"
     case "verify":
       return "Verifica layout"
+    default:
+      return (op as { type: string }).type
   }
 }
