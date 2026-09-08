@@ -41,7 +41,7 @@ cut (sketch id, throughAll true for holes), revolve, hole, fillet, chamfer, shel
 component (path, x,y,z, fix), mate (coincident|concentric, component1/2, entity1/2 inner|outer|top|bottom|pad, diameter mm),
 After mates in an assembly always append {"id":"v1","type":"verify"} — COM step ok is not proof of pose.
 sheetFormat (format A3|A2), standardViews (model: assembly or part savePath, firstAngle true, includeIso true),
-modelDimensions, annotation (text, x, y).
+modelDimensions, annotation (text, x, y in sheet metres: A3 ≈ 0.420×0.297, typical note 0.02, 0.27; values >2 mean millimetres and the compiler converts).
 Every feature sketch MUST be fully quoted (width, height, hole Ø, offsets from origin/edges).
 The bridge adds visible SolidWorks sketch dimensions (FullyDefineSketch / AddDimension2) on every ProfileFeature, including hole/cut sketches. Keep holes on a separate sketch+cut when they are not on the boss profile.
 No fillet unless the user asks: FeatureFillet is unreliable.
@@ -59,7 +59,8 @@ When the user says tavola A3 CM / Cartiglio CM: always sheetFormat A3, never a m
 If the user asks for scala / telaio / fiancate / scalini / modulo scala (not the L-bracket):
 Do NOT emit the staffa kit.
 job = each unique prismatic part, then one assembly, then drawing if tavola/A3 is asked.
-Typical module (keep under 8 documents): FiancataSx, FiancataDx (Front 600×40, thickness 8 along Z, 2 holes Ø8 at X=±220 through Z), Scalino1, Scalino2 (Front 220×40, 1 hole Ø8, extrude 724 along Z — same hole axis as the stringers, filling the inner gap), optional Piede 80×80×8.
+Identical geometry = one SLDPRT inserted twice (two scalini → un solo Scalino.SLDPRT).
+Typical module (keep under 8 documents): FiancataSx, FiancataDx (Front 600×40, thickness 8 along Z, 2 holes Ø8 at X=±220 through Z), Scalino (Front 220×40, 1 hole Ø8, extrude 724 along Z — same hole axis as the stringers, filling the inner gap), optional Piede 80×80×8.
 Assembly: Sx fixed; concentric Ø8 with holeX ±220; coincident zmin/zmax so treads sit in the gap; parallel xmax to lock rotation; piede ymax to stringer ymin. Paths CAD/Name.SLDPRT.
 Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.
 Unique operation ids across the whole job. No sheet metal, weldments, or imported geometry.`

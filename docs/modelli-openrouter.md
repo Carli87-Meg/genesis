@@ -8,7 +8,7 @@ Elenco al **9 settembre 2026**. Per Solidworks_IA serve un modello che **scrive 
 
 Perché: tool-use + structured output, contesto 1M, niente seconda chiave (solo OpenRouter). GPT-4o mini ha già fallito la forma JSON della staffa a L (`{sketch:{…}}` senza `type`). I mini restano in «Veloce», non come default.
 
-**GPT-6 Astra non è il default.** Flagship OpenAI (lancio 3–4 set 2026), adatto a lavoro lungo e computer-use, ma costa ~10 / 50 USD per milione di token e l’API omette `reasoning.effort` → **low**. L’interprete, se lo scegli, forza **medium**. `none` risponde 400.
+**GPT-6 Astra non è il default.** Test interprete 9 set 2026: kit staffa (4 doc, 40 s) e modulo scala (5 doc, 43 s, niente leak staffa) **schema v2 ok**, effort medium. Costa ~10 / 50 USD per M e ~40 s a chiamata. L’API omette effort → **low**; l’interprete forza **medium**. `none` risponde 400. Note tavola: Astra manda x,y in mm (20, 25); il compilatore converte se >2.
 
 Prezzi ≈ USD / milione token (in / out).
 
@@ -32,5 +32,7 @@ Cosa abbiamo preso dal suo modo di lavorare (vale per ogni modello):
 2. Tavola: `includeIso` e 1° angolo di default; cartiglio **Cartiglio_CM**, non B-size.
 3. Effort alto solo su geometria/posa lunga; JSON one-shot = medium.
 4. Prova visiva (PrintWindow) quando SaveBMP non mostra il foglio.
+5. Pezzi identici = un SLDPRT, due `component` (Astra sul modulo scala: un solo Scalino).
+6. `annotation.x/y` in metri foglio; se >2 sono millimetri.
 
 Niente `:batch`, `:free`, alias `~…-latest`, né BYOK. Chiave mai in git. Con chiave, errore OpenRouter ≠ demo.

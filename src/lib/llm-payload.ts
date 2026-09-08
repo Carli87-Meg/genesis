@@ -283,9 +283,14 @@ function ensureCadInvariants(doc: SolidWorksDocumentPayload) {
   if (doc.document.type !== "drawing") return
   if (!doc.document.sheetFormat) doc.document.sheetFormat = "A3"
   for (const op of doc.operations) {
-    if (op.type !== "standardViews") continue
-    if (op.includeIso === undefined) op.includeIso = true
-    if (op.firstAngle === undefined) op.firstAngle = true
+    if (op.type === "standardViews") {
+      if (op.includeIso === undefined) op.includeIso = true
+      if (op.firstAngle === undefined) op.firstAngle = true
+    }
+    if (op.type === "annotation") {
+      if (typeof op.x === "number" && op.x > 2) op.x = op.x / 1000
+      if (typeof op.y === "number" && op.y > 2) op.y = op.y / 1000
+    }
   }
 }
 
