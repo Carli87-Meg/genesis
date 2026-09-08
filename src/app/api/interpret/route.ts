@@ -146,7 +146,7 @@ async function callOpenRouter(
   const payload = {
     model,
     temperature: 0.1,
-    max_tokens: 8192,
+    max_tokens: 16384,
     response_format: { type: "json_object" as const },
     messages: [
       { role: "system", content: SYSTEM },
@@ -195,6 +195,9 @@ async function callOpenRouter(
   const content = choice?.message?.content ?? ""
   if (choice?.finish_reason === "length") {
     throw new Error("risposta LLM troncata (max tokens); riprova con un pezzo più semplice")
+  }
+  if (!content.trim()) {
+    throw new Error(`risposta LLM vuota (finish=${choice?.finish_reason || "-"})`)
   }
 
   const { result, meta } = interpretFromLlmText(content, model)
