@@ -15,7 +15,7 @@ import {
   Plus,
   RotateCcw,
   Settings2,
-  Stairs,
+  Frame,
   Trash2,
   X,
 } from "lucide-react"
@@ -87,7 +87,7 @@ const ACTIONS = [
     id: "scala",
     label: "Scala / telaio",
     hint: "Fiancate e scalini",
-    icon: Stairs,
+    icon: Frame,
     prompt: SCALA,
     followUp: false,
   },
