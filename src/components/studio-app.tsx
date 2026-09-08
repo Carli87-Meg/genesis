@@ -321,6 +321,15 @@ export function StudioApp() {
     setOps((list) => list.map((o) => (o.id === id ? ({ ...o, [field]: value } as TreeOp) : o)))
   }
 
+  async function postToBridge(doc: SolidWorksDocumentPayload): Promise<BridgeResponse> {
+    const res = await fetch("/api/solidworks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload: doc, bridgeUrl: settings.bridgeUrl }),
+    })
+    return (await res.json()) as BridgeResponse
+  }
+
   async function sendToSolidWorks() {
     const active = ops.filter((o) => o.status !== "discarded")
     if (active.length === 0 && !job) return
@@ -355,12 +364,14 @@ export function StudioApp() {
         setSendProgress(
           `Documento ${i + 1}/${docs.length}: ${doc.document.name} (${doc.document.type})`,
         )
-        const res = await fetch("/api/solidworks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ payload: doc, bridgeUrl: settings.bridgeUrl }),
-        })
-        const data = (await res.json()) as BridgeResponse
+        let data = await postToBridge(doc)
+        if (!data.ok && /80010108|RPC_E_DISCONNECTED|disconnesso/i.test(data.error || "")) {
+          setSendProgress(
+            `COM disconnesso, nuovo tentativo ${i + 1}/${docs.length}: ${doc.document.name}`,
+          )
+          await new Promise((r) => setTimeout(r, 2500))
+          data = await postToBridge(doc)
+        }
         last = data
         for (const s of data.steps ?? []) mergedSteps.push(s)
         if (!data.ok) {
@@ -369,6 +380,7 @@ export function StudioApp() {
           setBridgeResult({ ...data, steps: mergedSteps })
           break
         }
+        if (i < docs.length - 1) await new Promise((r) => setTimeout(r, 1200))
       }
       if (!failed && last) setBridgeResult({ ...last, steps: mergedSteps })
       setMessages((m) => [

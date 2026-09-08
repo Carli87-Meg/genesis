@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using SolidWorks.Interop.sldworks;
 
 namespace SolidWorksBridge;
@@ -62,44 +63,69 @@ internal sealed class SolidWorksSession
 
     public BridgeResponse Execute(SolidWorksDocumentPayload payload)
     {
-        try
+        Exception? last = null;
+        for (var attempt = 1; attempt <= 2; attempt++)
         {
-            EnsureApp();
-            var executor = new PayloadExecutor();
-            var result = executor.Execute(_app!, payload);
-            var steps = result.Steps;
-            var features = result.Features;
-            var failed = steps.Exists(s => !s.Ok &&
-                !s.Op.Contains("Fillet", StringComparison.OrdinalIgnoreCase) &&
-                !s.Op.Contains("InsertShell", StringComparison.OrdinalIgnoreCase) &&
-                !s.Op.Contains("Chamfer", StringComparison.OrdinalIgnoreCase));
-            return new BridgeResponse
+            try
             {
-                Ok = !failed || features.Count > 0,
-                AttachPath = _attachPath,
-                Version = SafeVersion(),
-                Document = result.DocTitle,
-                DocumentType = result.DocType,
-                SavedPath = result.SavedPath,
-                SnapshotPath = result.SnapshotPath,
-                Steps = steps,
-                Features = features,
-                Error = failed ? steps.Find(s => !s.Ok &&
+                EnsureApp();
+                var executor = new PayloadExecutor();
+                var result = executor.Execute(_app!, payload);
+                var steps = result.Steps;
+                var features = result.Features;
+                var failed = steps.Exists(s => !s.Ok &&
                     !s.Op.Contains("Fillet", StringComparison.OrdinalIgnoreCase) &&
                     !s.Op.Contains("InsertShell", StringComparison.OrdinalIgnoreCase) &&
-                    !s.Op.Contains("Chamfer", StringComparison.OrdinalIgnoreCase))?.Detail : null,
-            };
-        }
-        catch (Exception ex)
-        {
-            return new BridgeResponse
+                    !s.Op.Contains("Chamfer", StringComparison.OrdinalIgnoreCase));
+                return new BridgeResponse
+                {
+                    Ok = !failed || features.Count > 0,
+                    AttachPath = _attachPath,
+                    Version = SafeVersion(),
+                    Document = result.DocTitle,
+                    DocumentType = result.DocType,
+                    SavedPath = result.SavedPath,
+                    SnapshotPath = result.SnapshotPath,
+                    Steps = steps,
+                    Features = features,
+                    Error = failed ? steps.Find(s => !s.Ok &&
+                        !s.Op.Contains("Fillet", StringComparison.OrdinalIgnoreCase) &&
+                        !s.Op.Contains("InsertShell", StringComparison.OrdinalIgnoreCase) &&
+                        !s.Op.Contains("Chamfer", StringComparison.OrdinalIgnoreCase))?.Detail : null,
+                };
+            }
+            catch (Exception ex)
             {
-                Ok = false,
-                Error = PayloadExecutor.FormatEx(ex),
-                AttachPath = _attachPath,
-            };
+                last = ex;
+                var detail = PayloadExecutor.FormatEx(ex);
+                if (attempt < 2 && IsDisconnected(detail))
+                {
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] COM disconnected, retry {attempt + 1}/2: {detail}");
+                    _app = null;
+                    try { Thread.Sleep(1800); } catch { /* ignore */ }
+                    continue;
+                }
+
+                return new BridgeResponse
+                {
+                    Ok = false,
+                    Error = detail,
+                    AttachPath = _attachPath,
+                };
+            }
         }
+
+        return new BridgeResponse
+        {
+            Ok = false,
+            Error = last is null ? "Esecuzione COM fallita" : PayloadExecutor.FormatEx(last),
+            AttachPath = _attachPath,
+        };
     }
+
+    private static bool IsDisconnected(string detail) =>
+        detail.Contains("80010108", StringComparison.OrdinalIgnoreCase)
+        || detail.Contains("RPC_E_DISCONNECTED", StringComparison.OrdinalIgnoreCase);
 
     private string? SafeVersion()
     {
