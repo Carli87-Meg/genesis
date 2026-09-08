@@ -588,22 +588,7 @@ internal sealed partial class PayloadExecutor
 
         if (active is not null)
         {
-            foreach (var feat in WalkFeatures(model))
-            {
-                string tn;
-                try { tn = feat.GetTypeName2(); }
-                catch { continue; }
-                if (tn is not "ProfileFeature") continue;
-                try
-                {
-                    if (feat.GetSpecificFeature2() is ISketch sk && SketchesEqual(sk, active))
-                        return CountDimsOn(feat);
-                }
-                catch { /* next */ }
-            }
-
-            // Schizzo in creazione: non è ancora (o non matcha) un nodo albero.
-            // NON usare l'ultimo ProfileFeature — appartiene al pezzo precedente.
+            // Schizzo aperto: non confrontare ISketch COM (Equals può matchare lo schizzo precedente).
             return 0;
         }
 
@@ -617,12 +602,6 @@ internal sealed partial class PayloadExecutor
         }
 
         return last is null ? 0 : CountDimsOn(last);
-    }
-
-    private static bool SketchesEqual(ISketch a, ISketch b)
-    {
-        try { if (ReferenceEquals(a, b)) return true; } catch { /* ignore */ }
-        try { return Equals(a, b); } catch { return false; }
     }
 
     private int CountDisplayDimensions(ModelDoc2 model)

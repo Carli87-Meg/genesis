@@ -2016,10 +2016,6 @@ internal sealed partial class PayloadExecutor
             var path = Path.GetFullPath(spec.SavePath);
             var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            if (File.Exists(path) && _sw is not null)
-            {
-                try { _sw.CloseDoc(Path.GetFileName(path)); } catch { /* not open */ }
-            }
 
             var errors = 0;
             var warnings = 0;
