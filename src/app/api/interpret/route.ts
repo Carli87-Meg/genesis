@@ -46,7 +46,15 @@ If the user asks for bushing/boccola AND drawing/tavola/A3 (kit): root document 
 - Assembly: component staffa (fix) + boccola; concentric inner-inner diameter 10.2; coincident bottom bushing / top pad. AssiemeStaffa, CAD/AssiemeStaffa.SLDASM.
 - Drawing: document.sheetFormat "A3" (Cartiglio_CM / PARTE_A3_CM.slddrt), sheetFormat op format "A3",
   standardViews model "CAD/AssiemeStaffa.SLDASM", modelDimensions, annotation. TavolaStaffa, Disegni/TavolaStaffa.SLDDRW.
-When the user says tavola A3 CM / Cartiglio CM: always sheetFormat A3, never a missing .drwdot.`
+When the user says tavola A3 CM / Cartiglio CM: always sheetFormat A3, never a missing .drwdot.
+
+If the user asks for scala / telaio / fiancate / scalini / modulo scala (not the L-bracket):
+Do NOT emit the staffa kit.
+job = each unique prismatic part, then one assembly, then drawing if tavola/A3 is asked.
+Typical module (keep under 8 documents): FiancataSx, FiancataDx (plate 40×8, length along X, 2 holes Ø8), Scalino1, Scalino2 (width × 220 × 6, 2 holes Ø8), optional Piede 80×80×8.
+Assembly: one stringer fixed; coincident face mates and concentric on Ø8 holes. Paths CAD/Name.SLDPRT.
+Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.
+Unique operation ids across the whole job. No sheet metal, weldments, or imported geometry.`
 
 type InterpretBody = {
   prompt?: string

@@ -15,9 +15,11 @@ import {
   Plus,
   RotateCcw,
   Settings2,
+  Stairs,
   Trash2,
   X,
 } from "lucide-react"
+import { cn } from "cn"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -51,10 +53,14 @@ import {
 const STAFFA =
   "Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM"
 
+const SCALA =
+  "Modulo scala metallica (studio Guidetti, non l'intero progetto): 2 fiancate 40×8×600 mm distanti 700 mm, 2 scalini 700×220×6 mm, 1 piede 80×80×8 mm. Fori Ø8. Assieme con mate coincidenti sulle facce e concentrici sui fori. Tavola A3 CM Cartiglio_CM."
+
 const ACTIONS = [
   {
     id: "pezzo",
     label: "Crea pezzo",
+    hint: "Piastra forata",
     icon: Plus,
     prompt: "Piastra 80 × 50 × 8 mm con 4 fori Ø6 agli angoli",
     followUp: false,
@@ -62,6 +68,7 @@ const ACTIONS = [
   {
     id: "tavola",
     label: "Tavola A3 CM",
+    hint: "Cartiglio_CM",
     icon: FileSpreadsheet,
     prompt: "Tavola A3 CM con Cartiglio_CM, viste in 1° angolo del pezzo o assieme corrente",
     followUp: true,
@@ -69,12 +76,21 @@ const ACTIONS = [
   {
     id: "assieme",
     label: "Assieme",
+    hint: "Perno e rondella",
     icon: Layers,
     prompt:
       "Assieme: piastra 80×50×8 mm, perno Ø8×24 mm, rondella Ø18/Ø8.2×2 mm, mate concentrici e coincidenti sulle facce",
     followUp: false,
   },
-  { id: "staffa", label: "Staffa a L", icon: Box, prompt: STAFFA, followUp: false },
+  { id: "staffa", label: "Staffa a L", hint: "Kit 4 documenti", icon: Box, prompt: STAFFA, followUp: false },
+  {
+    id: "scala",
+    label: "Scala / telaio",
+    hint: "Fiancate e scalini",
+    icon: Stairs,
+    prompt: SCALA,
+    followUp: false,
+  },
 ] as const
 
 const SETTINGS_KEY = "solidworks-ia-settings"
@@ -495,8 +511,9 @@ export function StudioApp() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-dvh items-center justify-center text-sm text-muted-foreground">
-        Caricamento copilot…
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-background text-sm text-muted-foreground">
+        <Loader2 className="size-5 animate-spin text-primary" />
+        <p>Caricamento copilot…</p>
       </div>
     )
   }
@@ -527,17 +544,40 @@ export function StudioApp() {
 
   return (
     <div className="flex h-dvh flex-col bg-background">
-      <header className="flex items-center gap-2 border-b px-3 py-2 sm:px-4">
-        <Box className="size-5 shrink-0" />
+      <header className="flex items-center gap-3 border-b border-border/80 bg-background/75 px-3 py-2.5 backdrop-blur-md sm:px-5">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/20">
+          <Box className="size-4" />
+        </div>
         <div className="min-w-0">
-          <h1 className="text-sm font-semibold leading-none">Solidworks_IA</h1>
-          <p className="truncate text-xs text-muted-foreground">Copilot sul CAD aperto · schema v2</p>
+          <h1 className="text-[15px] font-semibold leading-none">Solidworks_IA</h1>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            Copilot sul CAD aperto · schema v2
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-          <Badge variant={swOk ? "default" : "secondary"} className="hidden sm:inline-flex">
+          <span
+            className={cn(
+              "hidden items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] sm:inline-flex",
+              swOk ? "border-primary/25 bg-primary/10 text-foreground" : "border-border text-muted-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                swOk === null ? "bg-muted-foreground/50" : swOk ? "bg-emerald-400" : "bg-destructive",
+              )}
+            />
             {swOk === null ? "SolidWorks…" : swOk ? "SolidWorks collegato" : "Bridge off"}
-          </Badge>
-          <Badge variant={keyOn ? "default" : "outline"}>{keyOn ? "OpenRouter" : "Demo"}</Badge>
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px]",
+              keyOn ? "border-primary/25 bg-primary/10" : "border-border text-muted-foreground",
+            )}
+          >
+            <span className={cn("size-1.5 rounded-full", keyOn ? "bg-primary" : "bg-muted-foreground/50")} />
+            {keyOn ? "OpenRouter" : "Demo"}
+          </span>
           <Button
             type="button"
             variant="ghost"
@@ -552,6 +592,7 @@ export function StudioApp() {
             type="button"
             variant="outline"
             size="sm"
+            className="rounded-full"
             onClick={() => {
               setDraft(settings)
               setSettingsOpen(true)
@@ -563,32 +604,40 @@ export function StudioApp() {
         </div>
       </header>
 
-      {notice && <div className="border-b bg-muted px-4 py-2 text-sm">✓ {notice}</div>}
+      {notice && (
+        <div className="border-b border-primary/20 bg-primary/10 px-4 py-2 text-sm text-foreground">
+          {notice}
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
           <ScrollArea className="flex-1">
-            <div className="mx-auto w-full max-w-2xl space-y-4 px-4 py-6">
+            <div className="mx-auto w-full max-w-2xl space-y-4 px-4 py-6 sm:py-8">
               {messages.length === 0 && !busy && (
-                <div className="py-8 text-center sm:py-14">
-                  <h2 className="text-lg font-medium">Cosa vuoi fare in SolidWorks?</h2>
-                  <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-                    Descrivi il pezzo o l&apos;azione. Il copilot propone operazioni parametriche,
-                    poi <span className="text-foreground">Esegui</span> le manda al CAD aperto
-                    (bridge HTTP→COM, non un add-in).
+                <div className="py-6 text-center sm:py-12">
+                  <p className="text-[11px] font-medium tracking-[0.18em] text-primary uppercase">
+                    Copilot SolidWorks
                   </p>
-                  <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">Cosa vuoi fare in SolidWorks?</h2>
+                  <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+                    Descrivi il pezzo o l&apos;azione. Il copilot propone operazioni parametriche, poi{" "}
+                    <span className="text-foreground">Esegui</span> le manda al CAD aperto (bridge HTTP→COM, non
+                    un add-in).
+                  </p>
+                  <div className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {ACTIONS.map((a) => (
                       <Button
                         key={a.id}
                         type="button"
                         variant="outline"
-                        className="h-auto flex-col items-start gap-1 px-3 py-3 text-left"
+                        className="h-auto flex-col items-start gap-1.5 rounded-2xl border-border/80 bg-card/60 px-3 py-3 text-left shadow-sm hover:border-primary/35 hover:bg-accent/40"
                         disabled={busy}
                         onClick={() => void interpret(a.prompt, a.followUp && Boolean(payload))}
                       >
-                        <a.icon className="size-4 text-muted-foreground" />
-                        <span className="text-xs font-medium">{a.label}</span>
+                        <a.icon className="size-4 text-primary" />
+                        <span className="text-xs font-medium text-foreground">{a.label}</span>
+                        <span className="text-[11px] font-normal text-muted-foreground">{a.hint}</span>
                       </Button>
                     ))}
                   </div>
@@ -600,17 +649,27 @@ export function StudioApp() {
                   <div
                     className={
                       m.role === "user"
-                        ? "max-w-[90%] rounded-2xl bg-primary px-3.5 py-2 text-sm text-primary-foreground"
+                        ? "max-w-[92%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground shadow-sm"
                         : m.error
-                          ? "max-w-[90%] rounded-2xl border border-destructive/40 bg-destructive/10 px-3.5 py-2 text-sm"
-                          : "max-w-[90%] rounded-2xl bg-muted px-3.5 py-2 text-sm"
+                          ? "max-w-[92%] rounded-2xl rounded-bl-md border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm leading-relaxed"
+                          : "max-w-[92%] rounded-2xl rounded-bl-md border border-border/70 bg-card/80 px-4 py-2.5 text-sm leading-relaxed shadow-sm"
                     }
                   >
+                    {m.role === "assistant" && !m.error && (
+                      <p className="mb-1.5 text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+                        Proposta
+                      </p>
+                    )}
+                    {m.error && (
+                      <p className="mb-1.5 text-[10px] font-medium tracking-wider text-destructive uppercase">
+                        Errore
+                      </p>
+                    )}
                     <p className="whitespace-pre-wrap">{m.text}</p>
                     {m.proposal && (
-                      <div className="mt-3 space-y-2 border-t border-border/60 pt-2">
+                      <div className="mt-3 space-y-2.5 border-t border-border/50 pt-3">
                         <p className="text-xs text-muted-foreground">
-                          Proposta: {m.proposal.names.join(" · ")} · {m.proposal.opCount} operazioni
+                          {m.proposal.names.join(" · ")} · {m.proposal.opCount} operazioni
                           {m.proposal.jobCount && m.proposal.jobCount > 1
                             ? ` · kit ${m.proposal.jobCount} documenti`
                             : ""}
@@ -620,6 +679,7 @@ export function StudioApp() {
                         <Button
                           type="button"
                           size="sm"
+                          className="rounded-full"
                           disabled={!canExecute || sendBusy}
                           onClick={() => void sendToSolidWorks()}
                         >
@@ -637,8 +697,8 @@ export function StudioApp() {
               ))}
 
               {busy && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" />
+                <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin text-primary" />
                   Il copilot sta traducendo in operazioni CAD…
                 </div>
               )}
@@ -646,7 +706,7 @@ export function StudioApp() {
             </div>
           </ScrollArea>
 
-          <div className="border-t bg-background p-3 sm:p-4">
+          <div className="border-t border-border/80 bg-background/80 p-3 backdrop-blur-md sm:p-4">
             <div className="mx-auto w-full max-w-2xl space-y-2">
               {messages.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
@@ -656,6 +716,7 @@ export function StudioApp() {
                       type="button"
                       variant="outline"
                       size="xs"
+                      className="rounded-full"
                       disabled={busy}
                       onClick={() => void interpret(a.prompt, a.followUp && Boolean(payload))}
                     >
@@ -666,6 +727,7 @@ export function StudioApp() {
                     type="button"
                     variant="ghost"
                     size="xs"
+                    className="rounded-full"
                     disabled={!payload || busy}
                     onClick={() => {
                       if (prompt.trim()) void interpret(prompt, true)
@@ -674,17 +736,23 @@ export function StudioApp() {
                     <RotateCcw className="size-3" />
                     Revisione
                   </Button>
-                  <Button type="button" variant="ghost" size="xs" onClick={resetConversation}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className="rounded-full"
+                    onClick={resetConversation}
+                  >
                     Nuova chat
                   </Button>
                 </div>
               )}
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Staffa a L 80×50×8 mm, parete 40 mm, boccola e tavola A3 CM…"
-                  className="min-h-[72px] resize-none"
+                  placeholder="Modulo scala metallica, fiancate, scalini, tavola A3 CM…"
+                  className="min-h-[84px] resize-none rounded-2xl bg-card/70 px-3.5 py-3 sm:min-h-[72px]"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault()
@@ -692,10 +760,10 @@ export function StudioApp() {
                     }
                   }}
                 />
-                <div className="flex flex-col gap-1.5">
+                <div className="flex gap-2 sm:w-[7.5rem] sm:flex-col sm:gap-1.5">
                   <Button
                     type="button"
-                    className="self-end"
+                    className="flex-1 rounded-full sm:self-stretch"
                     disabled={busy || !prompt.trim()}
                     onClick={() => void interpret(prompt, Boolean(payload))}
                   >
@@ -704,6 +772,7 @@ export function StudioApp() {
                   <Button
                     type="button"
                     variant="secondary"
+                    className="flex-1 rounded-full sm:self-stretch"
                     disabled={!canExecute || sendBusy}
                     onClick={() => void sendToSolidWorks()}
                   >
@@ -716,7 +785,9 @@ export function StudioApp() {
           </div>
         </main>
 
-        <aside className="hidden w-[300px] shrink-0 flex-col border-l lg:flex">{isLg ? rail : null}</aside>
+        <aside className="hidden w-[19.5rem] shrink-0 flex-col border-l border-border/80 bg-sidebar/80 lg:flex">
+          {isLg ? rail : null}
+        </aside>
       </div>
 
       {panelOpen && !isLg && (
@@ -727,8 +798,8 @@ export function StudioApp() {
             aria-label="Chiudi piano"
             onClick={() => setPanelOpen(false)}
           />
-          <div className="absolute inset-y-0 right-0 flex w-[min(100%,20rem)] flex-col bg-background shadow-lg">
-            <div className="flex items-center justify-between border-b px-3 py-2">
+          <div className="absolute inset-y-0 right-0 flex w-[min(100%,20rem)] flex-col bg-sidebar shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border/80 px-3 py-2.5">
               <span className="text-sm font-medium">Piano</span>
               <Button type="button" variant="ghost" size="icon-sm" onClick={() => setPanelOpen(false)}>
                 <X className="size-4" />
@@ -833,7 +904,7 @@ export function StudioApp() {
           <DialogHeader>
             <DialogTitle>Esegui in SolidWorks</DialogTitle>
             <DialogDescription>
-              Payload schema v2 verso il bridge locale. FeatureByPositionReverse + GetTypeName2.
+              Payload schema v2 verso il bridge locale. Un documento alla volta; se COM si stacca, ritento.
             </DialogDescription>
           </DialogHeader>
           {sendBusy && (
@@ -902,9 +973,9 @@ function PianoRail({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b px-3 py-2">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Piano</p>
-        <p className="text-[11px] text-muted-foreground">Albero e kit · secondario</p>
+      <div className="border-b border-border/80 px-4 py-3">
+        <p className="text-[10px] font-medium tracking-[0.16em] text-primary uppercase">Piano</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">Albero e kit · secondario</p>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-2 p-3">
@@ -923,15 +994,15 @@ function PianoRail({
             </div>
           )}
           {ops.length === 0 && (
-            <div className="text-sm text-muted-foreground">
+            <div className="rounded-xl border border-dashed border-border/80 bg-background/30 p-3 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">Nessuna proposta</p>
-              <p className="mt-1">Dopo «Proponi» qui vedi le feature da eseguire nel CAD.</p>
+              <p className="mt-1 leading-relaxed">Dopo «Proponi» qui vedi le feature da eseguire nel CAD.</p>
             </div>
           )}
           {ops.map((op, i) => (
             <div
               key={op.id + i}
-              className={`rounded-lg border p-2 text-xs ${op.status === "discarded" ? "opacity-50" : ""}`}
+              className={`rounded-xl border border-border/70 bg-background/40 p-2.5 text-xs ${op.status === "discarded" ? "opacity-50" : ""}`}
             >
               <div className="flex items-center gap-1">
                 <span className="font-medium">{op.name || opLabel(op)}</span>

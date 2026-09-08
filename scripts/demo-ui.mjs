@@ -41,11 +41,11 @@ try {
   if (await chip.count()) {
     await chip.click()
   } else {
-    await page.getByPlaceholder(/Staffa a L|Piastra/i).fill(PROMPT)
+    await page.getByPlaceholder(/scala metallica|Staffa a L|Piastra/i).fill(PROMPT)
     await page.getByRole("button", { name: /^Proponi$/ }).click()
   }
 
-  await page.getByText(/Proposta:|kit 4 documenti|Esegui in SolidWorks|Staffa a L 80/i).first().waitFor({
+  await page.getByText(/Proposta|kit 4 documenti|Esegui in SolidWorks|Staffa a L 80/i).first().waitFor({
     timeout: 180000,
   })
   await page.waitForTimeout(2500)

@@ -59,7 +59,7 @@ try {
 
   const chip = page.getByRole("button", { name: /Crea pezzo|Staffa a L/i }).first()
   await chip.click()
-  await page.getByText(/Proposta:|Estrusione|kit /i).first().waitFor({ timeout: 60000 })
+  await page.getByText(/Proposta|Estrusione|kit /i).first().waitFor({ timeout: 60000 })
   await page.waitForTimeout(800)
 
   const treeText = await page.locator("aside").innerText().catch(() => "")
