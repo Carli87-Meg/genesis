@@ -17,9 +17,9 @@ if (-not (Test-Path "$root\.env.local")) {
 Write-Host "Avvio bridge HTTP→COM su 127.0.0.1:47821"
 dotnet build "$root\bridge\SolidWorksBridge.csproj" -c Release --nologo
 if ($LASTEXITCODE -ne 0) { throw "Build bridge fallita" }
-$bridgeDll = "$root\bridge\bin\Release\net8.0-windows\cadhost.dll"
-# AppLocker blocca l'apphost .exe; Smart App Control ha bloccato l'hash di SolidWorksBridge.dll.
-# Il runtime `dotnet cadhost.dll` è il modo supportato.
+$bridgeDll = "$root\bridge\bin\Release\net8.0-windows\swiahost.dll"
+# AppLocker blocca l'apphost .exe. Smart App Control può bloccare un hash già visto:
+# il primo `dotnet <nome>.dll` di un assembly nuovo è quello che passa; l'assembly attuale è swiahost.dll.
 Start-Process -FilePath "dotnet" -ArgumentList @($bridgeDll) -WorkingDirectory $root
 
 Start-Sleep -Seconds 3

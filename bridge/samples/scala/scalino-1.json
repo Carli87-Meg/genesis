@@ -17,9 +17,9 @@
       "name": "SchizzoScalino",
       "plane": "Top",
       "contours": [
-        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 700, "height": 220 },
-        { "kind": "circle", "cx": -346, "cy": 0, "diameter": 8 },
-        { "kind": "circle", "cx": 346, "cy": 0, "diameter": 8 }
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 220, "height": 740 },
+        { "kind": "circle", "cx": 0, "cy": -354, "diameter": 8 },
+        { "kind": "circle", "cx": 0, "cy": 354, "diameter": 8 }
       ]
     },
     {

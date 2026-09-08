@@ -53,6 +53,7 @@ bridge/obj/
 ~$*
 *.SWLock
 /sw-out/
+/Export/
 
 tmp-prompt.json
 tmp-interpret*.json

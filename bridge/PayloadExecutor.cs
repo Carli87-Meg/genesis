@@ -21,7 +21,6 @@ internal sealed partial class PayloadExecutor
         _steps.Clear();
         _created.Clear();
         _sw = swApp;
-        _sketchStillPath = payload.Document.SnapshotPath;
         _quotedStillSaved = false;
 
         swApp.Visible = true;
@@ -37,6 +36,7 @@ internal sealed partial class PayloadExecutor
             payload.Document.SavePath = SwPaths.Resolve(payload.Document.SavePath);
         if (!string.IsNullOrWhiteSpace(payload.Document.SnapshotPath))
             payload.Document.SnapshotPath = SwPaths.Resolve(payload.Document.SnapshotPath);
+        _sketchStillPath = payload.Document.SnapshotPath;
 
         try
         {
@@ -87,11 +87,15 @@ internal sealed partial class PayloadExecutor
                 }
 
                 EnableVisibleDimensions(model);
-                try { model.ShowFeatureDimensions(); } catch { /* optional */ }
-                try { model.ViewZoomtofit2(); } catch { /* optional */ }
+                Thread.Sleep(400);
             }
 
             var saved = SaveIfRequested(model, payload.Document);
+
+            if (!onlyPrefs)
+            {
+                try { model.ViewZoomtofit2(); } catch { /* optional */ }
+            }
             var snap = SnapshotIfRequested(model, payload.Document);
 
             string? title = null;
@@ -620,6 +624,23 @@ internal sealed partial class PayloadExecutor
                         false, false, false, false,
                         merge, true, true,
                         (int)swStartConditions_e.swStartSketchPlane, 0.0, false);
+                }
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureExtrusion3(
+                        true, false, false, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
+                        false, false, false, false, 0.0, 0.0,
+                        false, false, false, false,
+                        merge, true, true,
+                        (int)swStartConditions_e.swStartSketchPlane, 0.0, false);
+                }
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureExtrusion2(
+                        true, false, false, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
+                        false, false, false, false, 0.0, 0.0,
+                        false, false, false, false,
+                        merge, true, true) as Feature;
                 }
             }
         }
@@ -1991,7 +2012,6 @@ internal sealed partial class PayloadExecutor
             if (File.Exists(path) && _sw is not null)
             {
                 try { _sw.CloseDoc(Path.GetFileName(path)); } catch { /* not open */ }
-                try { File.Delete(path); } catch { /* locked */ }
             }
 
             var errors = 0;
@@ -2074,7 +2094,6 @@ internal sealed partial class PayloadExecutor
 
         EnableVisibleDimensions(model);
         RevealAllDisplayDimensions(model);
-        try { model.ViewDisplayHiddenremoved(); } catch { /* HLR */ }
         try { model.ViewZoomtofit2(); } catch { /* ignore */ }
         try { model.GraphicsRedraw2(); } catch { /* ignore */ }
         Thread.Sleep(450);
@@ -2122,14 +2141,8 @@ internal sealed partial class PayloadExecutor
         if (sketchFeat is null) return;
         try
         {
-            EnableVisibleDimensions(model);
-            RevealAllDisplayDimensions(model);
             try { model.ShowFeatureDimensions(); } catch { /* ignore */ }
             model.ClearSelection2(true);
-            sketchFeat.Select2(false, 0);
-            model.EditSketch();
-            try { ((ISketchManager)model.SketchManager).DisplayWhenAdded = true; } catch { /* ignore */ }
-            try { model.ViewDisplayHiddenremoved(); } catch { /* ignore */ }
             try { model.ViewZoomtofit2(); } catch { /* ignore */ }
             try { model.GraphicsRedraw2(); } catch { /* ignore */ }
             Thread.Sleep(450);

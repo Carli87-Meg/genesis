@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaScala",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaScala.SLDDRW",
+    "snapshotPath": "Export/TavolaScala.jpg",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "sf1",
+      "type": "sheetFormat",
+      "format": "A3"
+    },
+    {
+      "id": "v1",
+      "type": "standardViews",
+      "name": "VisteStandard",
+      "model": "CAD/AssiemeScala.SLDASM",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "d1",
+      "type": "modelDimensions",
+      "name": "Quote"
+    },
+    {
+      "id": "n1",
+      "type": "annotation",
+      "name": "Cartiglio",
+      "text": "Modulo scala — fiancate 600×40×8, scalini 220×740×6, Ø8, Cartiglio_CM A3",
+      "x": 0.02,
+      "y": 0.01
+    }
+  ]
+}

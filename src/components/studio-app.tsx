@@ -396,7 +396,7 @@ export function StudioApp() {
           setBridgeResult({ ...data, steps: mergedSteps })
           break
         }
-        if (i < docs.length - 1) await new Promise((r) => setTimeout(r, 1200))
+                if (i < docs.length - 1) await new Promise((r) => setTimeout(r, 2800))
       }
       if (!failed && last) setBridgeResult({ ...last, steps: mergedSteps })
       setMessages((m) => [
