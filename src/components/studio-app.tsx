@@ -417,6 +417,22 @@ export function StudioApp() {
         { role: "assistant", error: true, text: `Bridge irraggiungibile: ${msg}` },
       ])
     } finally {
+      const keep = [...docs]
+        .reverse()
+        .find((d) => d.document.type === "assembly")?.document.name
+      try {
+        await fetch("/api/solidworks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "cleanup",
+            keep: keep || null,
+            bridgeUrl: settings.bridgeUrl,
+          }),
+        })
+      } catch {
+        /* RAM: best-effort CloseDoc */
+      }
       setSendBusy(false)
       setSendProgress(null)
     }

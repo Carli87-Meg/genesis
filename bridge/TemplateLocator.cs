@@ -35,6 +35,14 @@ internal static class TemplateLocator
 
     public static string Assembly() => FirstExisting(AssemblyCandidates, "Assembly.asmdot");
 
+    public static IEnumerable<string> ExistingDrawingTemplates()
+    {
+        foreach (var p in DrawingCandidates)
+        {
+            if (File.Exists(p)) yield return p;
+        }
+    }
+
     public static string Drawing() => FirstExisting(DrawingCandidates, "iso.drwdot");
 
     public static string? SheetFormat(string? hint)

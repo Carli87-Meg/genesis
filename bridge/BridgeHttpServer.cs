@@ -89,6 +89,34 @@ internal sealed class BridgeHttpServer
                 return;
             }
 
+            if (req.HttpMethod is "POST" or "GET" && path == "/cleanup")
+            {
+                string? keep = null;
+                if (req.HttpMethod == "POST")
+                {
+                    using var reader = new StreamReader(req.InputStream, req.ContentEncoding);
+                    var body = reader.ReadToEnd();
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(body);
+                            if (doc.RootElement.TryGetProperty("keep", out var k))
+                                keep = k.GetString();
+                        }
+                        catch { /* ignore */ }
+                    }
+                }
+                else
+                {
+                    keep = req.QueryString["keep"];
+                }
+
+                var result = _sta.Invoke(() => _session.Cleanup(keep));
+                WriteJson(res, result.Ok ? 200 : 500, result);
+                return;
+            }
+
             if (req.HttpMethod == "POST" && path is "/execute" or "/v2/execute")
             {
                 using var reader = new StreamReader(req.InputStream, req.ContentEncoding);

@@ -32,6 +32,27 @@ export async function POST(req: Request) {
   )
 
   const payload = body.payload ?? body
+  if (body.action === "cleanup" || payload?.action === "cleanup") {
+    try {
+      const res = await fetch(`${url}/cleanup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keep: body.keep ?? payload?.keep ?? null }),
+      })
+      const data = (await res.json()) as BridgeResponse
+      return Response.json({ ...data, bridgeUrl: url }, { status: res.status })
+    } catch (err) {
+      return Response.json(
+        {
+          ok: false,
+          error: `Bridge irraggiungibile (${url}): ${err instanceof Error ? err.message : String(err)}`,
+          bridgeUrl: url,
+        },
+        { status: 503 },
+      )
+    }
+  }
+
   try {
     const res = await fetch(`${url}/execute`, {
       method: "POST",

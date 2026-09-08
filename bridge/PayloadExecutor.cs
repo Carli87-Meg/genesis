@@ -23,10 +23,7 @@ internal sealed partial class PayloadExecutor
         swApp.Visible = true;
         try { swApp.UserControl = true; } catch { /* ignore */ }
         try { swApp.CommandInProgress = false; } catch { /* mates fail if true */ }
-        try
-        {
-            swApp.SetUserPreferenceToggle((int)swUserPreferenceToggle_e.swInputDimValOnCreate, false);
-        }
+        try { swApp.SetUserPreferenceToggle((int)swUserPreferenceToggle_e.swInputDimValOnCreate, false); }
         catch { /* ignore */ }
 
         SwPaths.EnsureProjectFolders();
@@ -98,6 +95,15 @@ internal sealed partial class PayloadExecutor
 
             var features = FeatureTreeReader.Read(model);
             Step("FeatureByPositionReverse", true, $"{features.Count} feature (GetTypeName2)");
+            var dimCount = CountDisplayDimensions(model);
+            var hadSketch = payload.Operations.Exists(o =>
+            {
+                var t = (o.Type ?? "").Trim().ToLowerInvariant();
+                return t is "sketch" or "hole";
+            });
+            Step("DisplayDimensions", !hadSketch || dimCount > 0, $"{dimCount} quote visibili");
+            SnapshotQuotedSketch(model, payload.Document);
+            CloseAfterExecute(swApp, model);
             return (_steps, features, title, docType, saved, snap);
         }
         finally
@@ -255,24 +261,43 @@ internal sealed partial class PayloadExecutor
 
     private ModelDoc2? NewDrawing(ISldWorks swApp, string name)
     {
+        CloseIdleDocuments(swApp, keepAssemblies: true);
         ModelDoc2? doc = null;
-        var template = TemplateLocator.Drawing();
-        try
+        foreach (var template in TemplateLocator.ExistingDrawingTemplates())
         {
-            doc = swApp.NewDrawing2(2, template, 12, 0.42, 0.297) as ModelDoc2;
-            Step("NewDrawing", doc is not null, $"template={template}");
-        }
-        catch (Exception ex)
-        {
-            Step("NewDrawing", false, FormatEx(ex));
+            try
+            {
+                doc = swApp.NewDrawing2(2, template, 12, 0.42, 0.297) as ModelDoc2;
+                Step("NewDrawing", doc is not null, $"template={template}");
+                if (doc is not null) break;
+            }
+            catch (Exception ex)
+            {
+                Step("NewDrawing", false, $"{Path.GetFileName(template)}: {FormatEx(ex)}");
+            }
+
             try
             {
                 doc = swApp.NewDocument(template, 0, 0.42, 0.297) as ModelDoc2;
-                Step("NewDocument", doc is not null, "drawing via NewDocument");
+                Step("NewDocument", doc is not null, $"drawing via NewDocument {Path.GetFileName(template)}");
+                if (doc is not null) break;
             }
-            catch (Exception ex2)
+            catch (Exception ex)
             {
-                Step("NewDocument", false, FormatEx(ex2));
+                Step("NewDocument", false, FormatEx(ex));
+            }
+        }
+
+        if (doc is null)
+        {
+            try
+            {
+                doc = swApp.NewDrawing2(0, "", 12, 0.42, 0.297) as ModelDoc2;
+                Step("NewDrawing", doc is not null, "fallback NewDrawing2(empty)");
+            }
+            catch (Exception ex)
+            {
+                Step("NewDrawing", false, FormatEx(ex));
             }
         }
 
@@ -456,23 +481,25 @@ internal sealed partial class PayloadExecutor
         var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
         try { sketchMgr.AddToDB = true; } catch { /* ignore */ }
+        EnableVisibleDimensions(model);
 
         var contours = op.Field("contours");
         var n = 0;
+        var dims = 0;
         if (contours is { ValueKind: JsonValueKind.Array })
         {
             foreach (var c in contours.Value.EnumerateArray())
             {
-                if (DrawContour(sketchMgr, c, units)) n++;
+                if (DrawContour(model, sketchMgr, c, units, ref dims)) n++;
             }
         }
 
         sketchMgr.InsertSketch(false);
         RememberLatest(model, op.Id, op.Name);
-        Step("SketchManager", true, $"{n} contorni su {plane}");
+        Step("SketchManager", true, $"{n} contorni su {plane}, {dims} quote");
     }
 
-    private bool DrawContour(ISketchManager sketchMgr, JsonElement c, string units)
+    private bool DrawContour(ModelDoc2 model, ISketchManager sketchMgr, JsonElement c, string units, ref int dims)
     {
         var kind = c.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "";
         try
@@ -485,7 +512,8 @@ internal sealed partial class PayloadExecutor
                     var cy = Len(c, "cy", units);
                     var w = Len(c, "width", units);
                     var h = Len(c, "height", units);
-                    sketchMgr.CreateCornerRectangle(cx - w / 2, cy - h / 2, 0, cx + w / 2, cy + h / 2, 0);
+                    var created = sketchMgr.CreateCornerRectangle(cx - w / 2, cy - h / 2, 0, cx + w / 2, cy + h / 2, 0);
+                    dims += DimensionRectangle(model, created, cx, cy, w, h);
                     return true;
                 }
                 case "circle":
@@ -496,7 +524,8 @@ internal sealed partial class PayloadExecutor
                     var r = c.TryGetProperty("radius", out var rj) && rj.ValueKind == JsonValueKind.Number
                         ? ToMeters(rj.GetDouble(), units)
                         : d / 2;
-                    sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
+                    var circ = sketchMgr.CreateCircleByRadius(cx, cy, 0, r) as ISketchSegment;
+                    dims += DimensionCircle(model, circ, cx, cy, r);
                     return true;
                 }
                 case "line":
@@ -507,6 +536,27 @@ internal sealed partial class PayloadExecutor
                     if (c.TryGetProperty("construction", out var cons) && cons.ValueKind == JsonValueKind.True)
                     {
                         try { line.ConstructionGeometry = true; } catch { /* ignore */ }
+                    }
+                    else
+                    {
+                        try
+                        {
+                            model.ClearSelection2(true);
+                            line.Select4(false, null);
+                            var mx = (Len(c, "x1", units) + Len(c, "x2", units)) / 2;
+                            var my = (Len(c, "y1", units) + Len(c, "y2", units)) / 2;
+                            var dim = model.AddDimension2(mx + 0.008, my + 0.008, 0);
+                            if (dim is not null)
+                            {
+                                dims++;
+                                RevealDimension(dim);
+                                Step("AddDimension2", true, "line");
+                            }
+                        }
+                        catch
+                        {
+                            /* optional */
+                        }
                     }
                     return true;
                 }
@@ -635,10 +685,12 @@ internal sealed partial class PayloadExecutor
         var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
         try { sketchMgr.AddToDB = true; } catch { /* ignore */ }
+        EnableVisibleDimensions(model);
         var cx = ToMeters(op.Num("cx"), units);
         var cy = ToMeters(op.Num("cy"), units);
         var r = ToMeters(op.Num("diameter", 6), units) / 2;
-        sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
+        var circ = sketchMgr.CreateCircleByRadius(cx, cy, 0, r) as ISketchSegment;
+        DimensionCircle(model, circ, cx, cy, r);
         sketchMgr.InsertSketch(false);
 
         var cutOp = new CadOperation
@@ -808,6 +860,14 @@ internal sealed partial class PayloadExecutor
             if (!string.IsNullOrEmpty(op.Id)) _created[op.Id] = inst;
             if (!string.IsNullOrEmpty(op.Name)) _created[op.Name] = inst;
             _created[Path.GetFileNameWithoutExtension(full)] = inst;
+            _created[Path.GetFileName(full)] = inst;
+            _created[full] = inst;
+            var given = op.Str("path");
+            if (!string.IsNullOrWhiteSpace(given))
+            {
+                _created[given] = inst;
+                _created[given.Replace('\\', '/')] = inst;
+            }
 
             if (op.Flag("fix"))
             {
@@ -824,6 +884,17 @@ internal sealed partial class PayloadExecutor
             }
 
             Step("AddComponent5", true, inst);
+
+            try
+            {
+                _sw?.CloseDoc(Path.GetFileName(full));
+                var aErr = 0;
+                _sw?.ActivateDoc3(model.GetTitle(), false, 0, ref aErr);
+            }
+            catch
+            {
+                /* leave part window if CloseDoc fails */
+            }
         }
         catch (Exception ex)
         {
@@ -1669,22 +1740,54 @@ internal sealed partial class PayloadExecutor
     private Component2? FindComponent(IAssemblyDoc assy, string key)
     {
         if (string.IsNullOrWhiteSpace(key)) return null;
-        if (_created.TryGetValue(key, out var mapped)) key = mapped;
+        foreach (var needle in ComponentNeedles(key))
+        {
+            if (_created.TryGetValue(needle, out var mapped) && !string.IsNullOrWhiteSpace(mapped))
+            {
+                key = mapped;
+                break;
+            }
+        }
 
         if (AsArray(assy.GetComponents(false)) is not object[] comps) return null;
+        var needles = ComponentNeedles(key).ToArray();
         foreach (var obj in comps)
         {
             if (obj is not Component2 c) continue;
             var name = c.Name2 ?? "";
-            if (name.Equals(key, StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith(key + "-", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains(key, StringComparison.OrdinalIgnoreCase))
+            var path = "";
+            try { path = c.GetPathName() ?? ""; } catch { /* ignore */ }
+            foreach (var needle in needles)
             {
-                return c;
+                if (string.IsNullOrWhiteSpace(needle)) continue;
+                if (name.Equals(needle, StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith(needle + "-", StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith(needle + "/", StringComparison.OrdinalIgnoreCase) ||
+                    Path.GetFileNameWithoutExtension(path).Equals(needle, StringComparison.OrdinalIgnoreCase) ||
+                    Path.GetFileName(path).Equals(needle, StringComparison.OrdinalIgnoreCase))
+                {
+                    return c;
+                }
             }
         }
 
         return null;
+    }
+
+    private static IEnumerable<string> ComponentNeedles(string key)
+    {
+        var raw = key.Trim();
+        yield return raw;
+        var norm = raw.Replace('\\', '/');
+        yield return norm;
+        yield return Path.GetFileName(norm);
+        yield return Path.GetFileNameWithoutExtension(norm);
+        var slash = norm.LastIndexOf('/');
+        if (slash >= 0 && slash < norm.Length - 1)
+        {
+            yield return norm[(slash + 1)..];
+            yield return Path.GetFileNameWithoutExtension(norm[(slash + 1)..]);
+        }
     }
 
     private static string[] PlaneAliases(string plane) =>
@@ -1956,6 +2059,151 @@ internal sealed partial class PayloadExecutor
             Step("SaveBMP", false, FormatEx(ex));
             return null;
         }
+    }
+
+    private void SnapshotQuotedSketch(ModelDoc2 model, DocumentSpec spec)
+    {
+        if (model.GetType() != (int)swDocumentTypes_e.swDocPART) return;
+        var dest = spec.SnapshotPath;
+        if (string.IsNullOrWhiteSpace(dest)) return;
+        dest = Path.ChangeExtension(Path.GetFullPath(dest), null) + "-schizzo.jpg";
+        Feature? sketchFeat = null;
+        try
+        {
+            var feat = (Feature)model.FirstFeature();
+            while (feat is not null)
+            {
+                string tn;
+                try { tn = feat.GetTypeName2(); }
+                catch { tn = ""; }
+                if (tn is "ProfileFeature")
+                {
+                    sketchFeat = feat;
+                    break;
+                }
+
+                feat = feat.GetNextFeature() as Feature;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        if (sketchFeat is null) return;
+        try
+        {
+            EnableVisibleDimensions(model);
+            model.ClearSelection2(true);
+            sketchFeat.Select2(false, 0);
+            model.EditSketch();
+            try { model.ViewZoomtofit2(); } catch { /* ignore */ }
+            try { model.GraphicsRedraw2(); } catch { /* ignore */ }
+            Thread.Sleep(300);
+            var dir = Path.GetDirectoryName(dest);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            var bmp = Path.ChangeExtension(dest, ".bmp");
+            var ok = false;
+            try { ok = model.SaveBMP(bmp, 1600, 1200); } catch { /* ignore */ }
+            if (!ok)
+            {
+                try { model.ViewZoomtofit2(); } catch { /* ignore */ }
+            }
+
+            if (File.Exists(bmp))
+            {
+                using (var img = System.Drawing.Image.FromFile(bmp))
+                {
+                    img.Save(dest, System.Drawing.Imaging.ImageFormat.Jpeg);
+                }
+
+                try { File.Delete(bmp); } catch { /* ignore */ }
+                Step("SaveBMP", true, dest);
+            }
+            else
+            {
+                Step("SaveBMP", false, "schizzo: BMP non creato");
+            }
+        }
+        catch (Exception ex)
+        {
+            Step("SaveBMP", false, "schizzo: " + FormatEx(ex));
+        }
+        finally
+        {
+            try { ((ISketchManager)model.SketchManager).InsertSketch(false); }
+            catch { /* already closed */ }
+
+            try { model.ClearSelection2(true); } catch { /* ignore */ }
+        }
+    }
+
+    private void CloseAfterExecute(ISldWorks swApp, ModelDoc2 model)
+    {
+        int type;
+        string title;
+        try { type = model.GetType(); }
+        catch { return; }
+        try { title = model.GetTitle(); }
+        catch { title = ""; }
+
+        if (type == (int)swDocumentTypes_e.swDocASSEMBLY)
+        {
+            CloseIdleDocuments(swApp, keepAssemblies: true, keepTitle: title);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(title)) return;
+        try
+        {
+            swApp.CloseDoc(title);
+            Step("CloseDoc", true, title);
+        }
+        catch (Exception ex)
+        {
+            Step("CloseDoc", false, FormatEx(ex));
+        }
+    }
+
+    private void CloseIdleDocuments(ISldWorks swApp, bool keepAssemblies, string? keepTitle = null)
+    {
+        object[]? docs;
+        try { docs = AsArray(swApp.GetDocuments()); }
+        catch { return; }
+        if (docs is null) return;
+
+        var closed = 0;
+        foreach (var obj in docs)
+        {
+            if (obj is not ModelDoc2 d) continue;
+            string t;
+            int ty;
+            try { t = d.GetTitle(); ty = d.GetType(); }
+            catch { continue; }
+
+            if (!string.IsNullOrWhiteSpace(keepTitle) &&
+                t.Equals(keepTitle, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (keepAssemblies && ty == (int)swDocumentTypes_e.swDocASSEMBLY)
+            {
+                continue;
+            }
+
+            try
+            {
+                swApp.CloseDoc(t);
+                closed++;
+            }
+            catch
+            {
+                /* skip locked */
+            }
+        }
+
+        if (closed > 0) Step("CloseDoc", true, $"chiusi {closed} documenti extra");
     }
 
     private void ApplyStandardView(ModelDoc2 model, string named)

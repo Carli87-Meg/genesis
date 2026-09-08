@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using SolidWorks.Interop.sldworks;
+using SolidWorks.Interop.swconst;
 
 namespace SolidWorksBridge;
 
@@ -126,6 +127,84 @@ internal sealed class SolidWorksSession
     private static bool IsDisconnected(string detail) =>
         detail.Contains("80010108", StringComparison.OrdinalIgnoreCase)
         || detail.Contains("RPC_E_DISCONNECTED", StringComparison.OrdinalIgnoreCase);
+
+    public BridgeResponse Cleanup(string? keepTitle)
+    {
+        try
+        {
+            EnsureApp();
+            var keep = (keepTitle ?? "").Trim();
+            object[]? docs = null;
+            try
+            {
+                var raw = _app!.GetDocuments();
+                if (raw is object[] arr) docs = arr;
+                else if (raw is Array a)
+                {
+                    docs = new object[a.Length];
+                    a.CopyTo(docs, 0);
+                }
+            }
+            catch
+            {
+                docs = null;
+            }
+
+            var closed = new List<string>();
+            if (docs is not null)
+            {
+                foreach (var obj in docs)
+                {
+                    if (obj is not ModelDoc2 d) continue;
+                    string t;
+                    int ty;
+                    try { t = d.GetTitle(); ty = d.GetType(); }
+                    catch { continue; }
+
+                    if (keep.Length > 0 &&
+                        (t.Equals(keep, StringComparison.OrdinalIgnoreCase) ||
+                         t.StartsWith(keep, StringComparison.OrdinalIgnoreCase) ||
+                         Path.GetFileNameWithoutExtension(t).Equals(keep, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
+
+                    if (keep.Length > 0 && ty == (int)swDocumentTypes_e.swDocASSEMBLY &&
+                        t.Contains(keep, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        _app.CloseDoc(t);
+                        closed.Add(t);
+                    }
+                    catch
+                    {
+                        /* skip */
+                    }
+                }
+            }
+
+            return new BridgeResponse
+            {
+                Ok = true,
+                AttachPath = _attachPath,
+                Version = SafeVersion(),
+                Document = _app!.ActiveDoc is ModelDoc2 active ? active.GetTitle() : null,
+                Error = null,
+                Steps =
+                [
+                    new ExecStep { Ok = true, Op = "CloseDoc", Detail = closed.Count == 0 ? "niente da chiudere" : string.Join(", ", closed) },
+                ],
+            };
+        }
+        catch (Exception ex)
+        {
+            return new BridgeResponse { Ok = false, Error = PayloadExecutor.FormatEx(ex), AttachPath = _attachPath };
+        }
+    }
 
     private string? SafeVersion()
     {
