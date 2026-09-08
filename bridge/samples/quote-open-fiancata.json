@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "FiancataSx",
+    "attachToActive": false,
+    "openPath": "CAD/FiancataSx.SLDPRT",
+    "savePath": "CAD/FiancataSx.SLDPRT",
+    "snapshotPath": "Export/FiancataSx.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    { "id": "q1", "type": "quoteSketches" }
+  ]
+}

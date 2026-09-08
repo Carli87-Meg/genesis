@@ -21,6 +21,7 @@ const OP_TYPES = new Set([
   "modelDimensions",
   "annotation",
   "sheetFormat",
+  "quoteSketches",
 ])
 
 const TYPE_ALIAS: Record<string, string> = {
@@ -53,6 +54,8 @@ const TYPE_ALIAS: Record<string, string> = {
   setupsheet: "sheetFormat",
   clear_mates: "clearMates",
   clearmates: "clearMates",
+  quotesketches: "quoteSketches",
+  quote_sketches: "quoteSketches",
 }
 
 const PLANE_ALIAS: Record<string, "Front" | "Top" | "Right"> = {

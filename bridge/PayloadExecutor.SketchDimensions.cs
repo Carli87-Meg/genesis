@@ -61,7 +61,9 @@ internal sealed partial class PayloadExecutor
     }
 
     /// <summary>
-    /// Native SolidWorks quoting: auto-dims on create, then FullyDefineSketch, then AddDimension2.
+    /// Native SolidWorks quoting: FullyDefineSketch, then AddDimension2 / diametri / offset origine.
+    /// Sempre sullo schizzo ATTIVO — non sull'ultimo ProfileFeature dell'albero (il secondo
+    /// schizzo, es. fori dopo estrusione, veniva saltato perché il primo aveva già quote).
     /// </summary>
     private int QuoteActiveSketch(ModelDoc2 model, ISketchManager sketchMgr)
     {
@@ -70,21 +72,14 @@ internal sealed partial class PayloadExecutor
         try { sketchMgr.AutoSolve = true; } catch { /* ignore */ }
         EnableVisibleDimensions(model);
 
+        TryFullyDefineSketch(sketchMgr);
         var n = CountSketchFeatureDims(model);
-        if (n == 0)
-        {
-            TryFullyDefineSketch(sketchMgr);
-            n = CountSketchFeatureDims(model);
-        }
-
-        if (n == 0)
-        {
-            n = DimensionAllSegments(model);
-        }
+        n += DimensionAllSegments(model);
+        n += DimensionCentersFromOrigin(model);
 
         RevealAllDisplayDimensions(model);
-        n = Math.Max(n, CountSketchFeatureDims(model));
         try { model.GraphicsRedraw2(); } catch { /* ignore */ }
+        n = Math.Max(n, CountSketchFeatureDims(model));
         return n;
     }
 
@@ -193,6 +188,98 @@ internal sealed partial class PayloadExecutor
         }
 
         return n;
+    }
+
+    /// <summary>
+    /// Quote di officina: centro foro rispetto all'origine schizzo (X e Y).
+    /// AddDimension2 restituisce null se la quota esiste già (niente sovra-definizione).
+    /// </summary>
+    private int DimensionCentersFromOrigin(ModelDoc2 model)
+    {
+        var n = 0;
+        foreach (var s in ActiveSketchSegments(model))
+        {
+            int t;
+            try { t = s.GetType(); }
+            catch { continue; }
+            if (t != (int)swSketchSegments_e.swSketchARC && t != (int)swSketchSegments_e.swSketchELLIPSE)
+                continue;
+            if (!TryCircle(s, out var cx, out var cy, out var r)) continue;
+
+            ISketchPoint? center = null;
+            try { center = (s as ISketchArc)?.GetCenterPoint2() as ISketchPoint; }
+            catch { /* ignore */ }
+
+            if (Math.Abs(cx) > 1e-7)
+            {
+                if (AddCenterToOriginDim(model, center, cx, cy, r, horizontal: true))
+                {
+                    n++;
+                    Step("AddDimension2", true, $"foro X={cx * 1000:0.##} mm");
+                }
+            }
+
+            if (Math.Abs(cy) > 1e-7)
+            {
+                if (AddCenterToOriginDim(model, center, cx, cy, r, horizontal: false))
+                {
+                    n++;
+                    Step("AddDimension2", true, $"foro Y={cy * 1000:0.##} mm");
+                }
+            }
+        }
+
+        return n;
+    }
+
+    private bool AddCenterToOriginDim(
+        ModelDoc2 model,
+        ISketchPoint? center,
+        double cx,
+        double cy,
+        double r,
+        bool horizontal)
+    {
+        try { model.ClearSelection2(true); } catch { /* ignore */ }
+        if (!SelectOrigin(model, append: false)) return false;
+        var gotCenter = false;
+        try
+        {
+            if (center is not null) gotCenter = center.Select4(true, null);
+        }
+        catch { /* ignore */ }
+        if (!gotCenter && !SelectSketchPoint(model, cx, cy, append: true)) return false;
+
+        var dimX = horizontal ? cx / 2.0 : cx + r + 0.012;
+        var dimY = horizontal ? cy + r + 0.012 : cy / 2.0;
+        object? dim = null;
+        try
+        {
+            dim = horizontal
+                ? model.AddHorizontalDimension2(dimX, dimY, 0)
+                : model.AddVerticalDimension2(dimX, dimY, 0);
+        }
+        catch
+        {
+            try { dim = model.AddDimension2(dimX, dimY, 0); }
+            catch { return false; }
+        }
+
+        RevealDimension(dim);
+        return dim is not null;
+    }
+
+    private static bool SelectOrigin(ModelDoc2 model, bool append)
+    {
+        try
+        {
+            var ext = (IModelDocExtension)model.Extension;
+            if (ext.SelectByID2("", "EXTSKETCHPOINT", 0, 0, 0, append, 0, null, 0)) return true;
+            if (ext.SelectByID2("Point1", "SKETCHPOINT", 0, 0, 0, append, 0, null, 0)) return true;
+            if (ext.SelectByID2("Punto1", "SKETCHPOINT", 0, 0, 0, append, 0, null, 0)) return true;
+        }
+        catch { /* ignore */ }
+        return SelectSketchPoint(model, 0, 0, append);
     }
 
     private static bool TryCircle(ISketchSegment seg, out double cx, out double cy, out double r)
@@ -492,6 +579,31 @@ internal sealed partial class PayloadExecutor
 
     private int CountSketchFeatureDims(ModelDoc2 model)
     {
+        ISketch? active = null;
+        try { active = model.GetActiveSketch2() as ISketch; }
+        catch { active = null; }
+
+        if (active is not null)
+        {
+            foreach (var feat in WalkFeatures(model))
+            {
+                string tn;
+                try { tn = feat.GetTypeName2(); }
+                catch { continue; }
+                if (tn is not "ProfileFeature") continue;
+                try
+                {
+                    if (feat.GetSpecificFeature2() is ISketch sk && SketchesEqual(sk, active))
+                        return CountDimsOn(feat);
+                }
+                catch { /* next */ }
+            }
+
+            // Schizzo in creazione: non è ancora (o non matcha) un nodo albero.
+            // NON usare l'ultimo ProfileFeature — appartiene al pezzo precedente.
+            return 0;
+        }
+
         Feature? last = null;
         foreach (var feat in WalkFeatures(model))
         {
@@ -502,6 +614,12 @@ internal sealed partial class PayloadExecutor
         }
 
         return last is null ? 0 : CountDimsOn(last);
+    }
+
+    private static bool SketchesEqual(ISketch a, ISketch b)
+    {
+        try { if (ReferenceEquals(a, b)) return true; } catch { /* ignore */ }
+        try { return Equals(a, b); } catch { return false; }
     }
 
     private int CountDisplayDimensions(ModelDoc2 model)
@@ -544,6 +662,44 @@ internal sealed partial class PayloadExecutor
         }
 
         return n;
+    }
+
+    private void QuoteAllProfileFeatures(ModelDoc2 model)
+    {
+        if (model.GetType() != (int)swDocumentTypes_e.swDocPART) return;
+        var sketches = new List<Feature>();
+        foreach (var feat in WalkFeatures(model))
+        {
+            string tn;
+            try { tn = feat.GetTypeName2(); }
+            catch { continue; }
+            if (tn is "ProfileFeature") sketches.Add(feat);
+        }
+
+        var sketchMgr = (ISketchManager)model.SketchManager;
+        foreach (var feat in sketches)
+        {
+            try
+            {
+                EnableVisibleDimensions(model);
+                model.ClearSelection2(true);
+                feat.Select2(false, 0);
+                model.EditSketch();
+                try { model.ShowNamedView2("*Normale a", -1); } catch { /* ignore */ }
+                try { model.ViewZoomtofit2(); } catch { /* ignore */ }
+                try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
+                try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
+                var n = QuoteActiveSketch(model, sketchMgr);
+                CaptureQuotedSketch(model);
+                sketchMgr.InsertSketch(false);
+                Step("QuoteProfile", n > 0, $"{feat.Name}: {n} quote");
+            }
+            catch (Exception ex)
+            {
+                Step("QuoteProfile", false, $"{feat.Name}: {FormatEx(ex)}");
+                try { sketchMgr.InsertSketch(false); } catch { /* ignore */ }
+            }
+        }
     }
 
     private static IEnumerable<Feature> WalkFeatures(ModelDoc2 model)

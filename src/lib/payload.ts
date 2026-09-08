@@ -155,6 +155,11 @@ export type CadOperation =
     }
   | {
       id: string
+      type: "quoteSketches"
+      name?: string
+    }
+  | {
+      id: string
       type: "sheetFormat"
       name?: string
       /** A2 | A3 | path to PARTE_A3_CM.slddrt */

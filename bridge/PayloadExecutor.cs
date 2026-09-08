@@ -22,6 +22,7 @@ internal sealed partial class PayloadExecutor
         _created.Clear();
         _sw = swApp;
         _quotedStillSaved = false;
+        _sketchStillIndex = 0;
 
         swApp.Visible = true;
         try { swApp.UserControl = true; } catch { /* ignore */ }
@@ -87,6 +88,7 @@ internal sealed partial class PayloadExecutor
                 }
 
                 EnableVisibleDimensions(model);
+                QuoteAllProfileFeatures(model);
                 Thread.Sleep(400);
             }
 
@@ -475,7 +477,11 @@ internal sealed partial class PayloadExecutor
             case "setup_sheet":
                 ApplySheetFormat(model, op.Str("format", op.Str("path", "A3")));
                 break;
-            default: Step(op.Type ?? "op", false, "Tipo operazione non supportato"); break;
+            case "quoteSketches":
+            case "quote_sketches":
+            case "quotesketches":
+                QuoteAllProfileFeatures(model);
+                break;
         }
     }
 
@@ -2087,9 +2093,10 @@ internal sealed partial class PayloadExecutor
         }
     }
 
+    private int _sketchStillIndex;
+
     private void CaptureQuotedSketch(ModelDoc2 model)
     {
-        if (_quotedStillSaved) return;
         if (string.IsNullOrWhiteSpace(_sketchStillPath)) return;
 
         EnableVisibleDimensions(model);
@@ -2098,14 +2105,14 @@ internal sealed partial class PayloadExecutor
         try { model.GraphicsRedraw2(); } catch { /* ignore */ }
         Thread.Sleep(450);
 
-        var dest = Path.ChangeExtension(Path.GetFullPath(_sketchStillPath), null) + "-schizzo.jpg";
+        _sketchStillIndex++;
+        var dest = Path.ChangeExtension(Path.GetFullPath(_sketchStillPath), null)
+                   + (_sketchStillIndex <= 1 ? "-schizzo.jpg" : $"-schizzo-{_sketchStillIndex}.jpg");
         if (SaveJpegFromView(model, dest, 1600, 1200))
         {
             _quotedStillSaved = true;
             Step("SaveBMP", true, dest + " (schizzo quotato)");
         }
-
-        try { model.ViewDisplayShaded(); } catch { /* restore */ }
     }
 
     private void SnapshotQuotedSketch(ModelDoc2 model, DocumentSpec spec)

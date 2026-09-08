@@ -36,6 +36,8 @@ cut (sketch id, throughAll true for holes), revolve, hole, fillet, chamfer, shel
 component (path, x,y,z, fix), mate (coincident|concentric, component1/2, entity1/2 inner|outer|top|bottom|pad, diameter mm),
 sheetFormat (format A3|A2), standardViews (model: assembly or part savePath, firstAngle true, includeIso true),
 modelDimensions, annotation (text, x, y).
+Every feature sketch MUST be fully quoted (width, height, hole Ø, offsets from origin/edges).
+The bridge adds visible SolidWorks sketch dimensions (FullyDefineSketch / AddDimension2) on every ProfileFeature, including hole/cut sketches. Keep holes on a separate sketch+cut when they are not on the boss profile.
 No fillet unless the user asks: FeatureFillet is unreliable.
 
 Single part: omit "job".
