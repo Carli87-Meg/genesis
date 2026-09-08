@@ -29,7 +29,22 @@ export async function DELETE() {
   return Response.json({ ok: true, stored: false, valid: false })
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const key = await readLocalKey()
-  return Response.json({ stored: key.length > 8, keyLen: key.length })
+  const stored = key.length > 8
+  const wantVerify = new URL(req.url).searchParams.get("verify") === "1"
+  if (!wantVerify) {
+    return Response.json({ stored, keyLen: key.length })
+  }
+  if (!stored) {
+    return Response.json({ stored: false, keyLen: 0, valid: false, status: 0 })
+  }
+  const check = await verifyOpenRouterKey(key)
+  return Response.json({
+    stored: true,
+    keyLen: key.length,
+    valid: check.valid,
+    status: check.status,
+    detail: check.detail,
+  })
 }

@@ -29,11 +29,18 @@ const TYPE_ALIAS: Record<string, string> = {
   "boss-extrude": "extrude",
   bossextrude: "extrude",
   boss: "extrude",
+  estrusione: "extrude",
+  estrudi: "extrude",
   cutextrude: "cut",
   "cut-extrude": "cut",
   cutthrough: "cut",
+  taglio: "cut",
   revolution: "revolve",
   revolve2: "revolve",
+  rivoluzione: "revolve",
+  schizzo: "sketch",
+  sketch: "sketch",
+  foro: "hole",
   drawing_view: "drawingView",
   drawingview: "drawingView",
   vista: "drawingView",
@@ -119,6 +126,19 @@ export function interpretFromLlmText(
     ?.map((d) => coerceDocument(d))
     .filter((d): d is { doc: SolidWorksDocumentPayload; dropped: number } => d !== null)
 
+  const payloadRec = asRecord(root.payload)
+  const rootOps = Array.isArray(root.operations) ? root.operations.length : -1
+  const payloadOpsRaw = payloadRec && Array.isArray(payloadRec.operations) ? payloadRec.operations : []
+  const payloadOps = payloadOpsRaw.length || -1
+  const rawTypes = payloadOpsRaw.map((o) => {
+    const r = asRecord(o)
+    return r ? String(r.type ?? r.kind ?? r.op ?? r.operation ?? r.feature ?? "") : typeof o
+  })
+  const rawKeys = payloadOpsRaw.slice(0, 3).map((o) => {
+    const r = asRecord(o)
+    return r ? Object.keys(r).join("+") : typeof o
+  })
+
   let payloadPair =
     (job && job[0]) ||
     coerceDocument(root.payload) ||
@@ -126,7 +146,11 @@ export function interpretFromLlmText(
     null
 
   if (!payloadPair || payloadPair.doc.operations.length === 0) {
-    throw new Error("JSON LLM senza operations schema v2")
+    const jobLen = Array.isArray(root.job) ? root.job.length : 0
+    const jobOps = job?.map((j) => j.doc.operations.length) ?? []
+    throw new Error(
+      `JSON LLM senza operations schema v2 (keys=${Object.keys(root).join(",")} rootOps=${rootOps} payloadOps=${payloadOps} types=${rawTypes.join("|") || "-"} opKeys=${rawKeys.join(";") || "-"} jobLen=${jobLen} jobOps=${jobOps.join("+") || "-"})`,
+    )
   }
 
   const droppedOps = (job ?? [payloadPair]).reduce((n, p) => n + p.dropped, 0)
@@ -165,6 +189,8 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
     else dropped++
   }
   if (operations.length === 0) return null
+  linkSketches(operations)
+  recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
   const type = normalizeDocType(documentIn.type) ?? inferDocType(operations)
@@ -198,7 +224,8 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
 function normalizeOp(raw: unknown, index: number): CadOperation | null {
   const rec = asRecord(raw)
   if (!rec) return null
-  const aliased = TYPE_ALIAS[String(rec.type ?? "").trim().toLowerCase()] || String(rec.type ?? "").trim()
+  const rawType = String(rec.type ?? rec.kind ?? rec.op ?? rec.operation ?? rec.feature ?? "").trim()
+  const aliased = TYPE_ALIAS[rawType.toLowerCase()] || rawType || inferOpType(rec)
   if (!OP_TYPES.has(aliased)) return null
   const id = typeof rec.id === "string" && rec.id.trim() ? rec.id : `op${index + 1}`
   const next: Record<string, unknown> = { ...rec, id, type: aliased }
@@ -206,21 +233,94 @@ function normalizeOp(raw: unknown, index: number): CadOperation | null {
     const p = PLANE_ALIAS[next.plane.trim().toLowerCase()]
     if (p) next.plane = p
   }
+  if (aliased === "sketch" && !next.plane) next.plane = "Top"
   if (aliased === "sketch" && Array.isArray(next.contours)) {
     next.contours = next.contours.map(normalizeContour).filter(Boolean)
   }
   return next as CadOperation
 }
 
+function inferOpType(rec: Record<string, unknown>): string {
+  if (Array.isArray(rec.contours) || rec.plane) return "sketch"
+  if (rec.throughAll === true) return "cut"
+  if (typeof rec.depth === "number" && rec.sketch) return "extrude"
+  if (typeof rec.depth === "number") return rec.cut ? "cut" : "extrude"
+  if (typeof rec.diameter === "number") return "hole"
+  if (typeof rec.angle === "number") return "revolve"
+  return ""
+}
+
 function normalizeContour(raw: unknown): unknown {
   const rec = asRecord(raw)
   if (!rec) return null
   const kind = String(rec.kind ?? rec.type ?? "").toLowerCase()
-  if (kind === "rect" || kind === "rectangle") return { ...rec, kind: "rectangle" }
-  if (kind === "circ" || kind === "circle" || kind === "arc") return { ...rec, kind: "circle" }
+  const pos = asRecord(rec.position)
+  const cx = numish(rec.cx) ?? numish(pos?.x) ?? numish(rec.x) ?? 0
+  const cy = numish(rec.cy) ?? numish(pos?.y) ?? numish(rec.y) ?? 0
+  if (kind === "rect" || kind === "rectangle") {
+    const width = numish(rec.width) ?? 0
+    const height = numish(rec.height) ?? 0
+    return { ...rec, kind: "rectangle", cx, cy, width, height }
+  }
+  if (kind === "circ" || kind === "circle" || kind === "arc") {
+    const diameter = numish(rec.diameter) ?? (numish(rec.radius) != null ? numish(rec.radius)! * 2 : 0)
+    return { ...rec, kind: "circle", cx, cy, diameter }
+  }
   if (kind === "line" || kind === "linea") return { ...rec, kind: "line" }
-  if (rec.kind === "rectangle" || rec.kind === "circle" || rec.kind === "line") return rec
+  if (rec.kind === "rectangle" || rec.kind === "circle" || rec.kind === "line") {
+    return { ...rec, cx: numish((rec as { cx?: unknown }).cx) ?? cx, cy: numish((rec as { cy?: unknown }).cy) ?? cy }
+  }
   return null
+}
+
+function linkSketches(ops: CadOperation[]) {
+  let lastSketch = ""
+  for (const op of ops) {
+    if (op.type === "sketch") {
+      lastSketch = op.id
+      continue
+    }
+    if ((op.type === "extrude" || op.type === "cut" || op.type === "revolve") && lastSketch) {
+      const rec = op as CadOperation & { sketch?: string }
+      if (!rec.sketch) rec.sketch = lastSketch
+    }
+  }
+}
+
+function recenterCornerOrigin(ops: CadOperation[]) {
+  const first = ops.find((o) => o.type === "sketch")
+  if (!first || first.type !== "sketch") return
+  const rect = first.contours.find((c) => c.kind === "rectangle")
+  if (!rect || rect.kind !== "rectangle") return
+  if (Math.abs(rect.cx) > 1e-6 || Math.abs(rect.cy) > 1e-6) return
+  for (const op of ops) {
+    if (op.type !== "sketch") continue
+    const circles = op.contours.filter((c) => c.kind === "circle")
+    if (circles.length === 0) continue
+    const xs = circles.map((c) => (c.kind === "circle" ? c.cx : 0))
+    const ys = circles.map((c) => (c.kind === "circle" ? c.cy : 0))
+    const inCornerFrame =
+      Math.min(...xs) >= -0.5 &&
+      Math.max(...xs) <= rect.width + 0.5 &&
+      Math.min(...ys) >= -0.5 &&
+      Math.max(...ys) <= rect.height + 0.5 &&
+      Math.max(...xs) > rect.width / 2
+    if (!inCornerFrame) continue
+    for (const c of op.contours) {
+      if (c.kind !== "circle") continue
+      c.cx -= rect.width / 2
+      c.cy -= rect.height / 2
+    }
+  }
+}
+
+function numish(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return v
+  if (typeof v === "string") {
+    const n = Number(v.replace(",", "."))
+    if (Number.isFinite(n)) return n
+  }
+  return undefined
 }
 
 function normalizeDocType(v: unknown): SolidWorksDocumentPayload["document"]["type"] | null {

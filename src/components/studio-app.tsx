@@ -91,11 +91,7 @@ export function StudioApp() {
         setDraft(next)
         if (next.openRouterKey.length > 8) {
           void syncSessionKey(next.openRouterKey, false)
-        } else {
-          void fetch("/api/or-session", { method: "DELETE" })
         }
-      } else {
-        void fetch("/api/or-session", { method: "DELETE" })
       }
     } catch {
       /* ignore */
