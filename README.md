@@ -1,8 +1,8 @@
 # Solidworks_IA
 
-Chat in linguaggio naturale → albero feature parametrico (mm) → anteprima 3D → DFM → invio a SolidWorks.
+Copilot per SolidWorks: una conversazione in italiano (o inglese) propone operazioni parametriche, poi **Esegui in SolidWorks** le manda al CAD aperto.
 
-Architettura: **app web esterna** (Next.js) + **processo Windows C#/.NET** in ascolto HTTP locale che esegue `SolidWorksDocumentPayload` schema v2 via COM. Non è un add-in in-process.
+Architettura: **app web esterna** (Next.js) + **processo Windows C#/.NET** in ascolto HTTP locale che esegue `SolidWorksDocumentPayload` schema v2 via COM. Non è un add-in in-process. UI ispirata al flusso MecAgent (chat + esegui), non al branding.
 
 ## Requisiti
 
@@ -33,7 +33,7 @@ npm run dev
 - App: [http://127.0.0.1:4317](http://127.0.0.1:4317)
 - Bridge: [http://127.0.0.1:47821/health](http://127.0.0.1:47821/health)
 
-«Invia a SolidWorks» chiama `POST /api/solidworks`, che inoltra al bridge su `SOLIDWORKS_BRIDGE_URL` (o l’URL in Impostazioni).
+«Esegui in SolidWorks» chiama `POST /api/solidworks`, che inoltra al bridge su `SOLIDWORKS_BRIDGE_URL` (o l’URL in Impostazioni).
 
 Esempio più complesso in chat: *Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM*. L’app manda in sequenza parte, boccola, assieme e tavola. Le tavole usano il formato foglio **Cartiglio_CM** (`PARTE_A3_CM.slddrt` / `PARTE_A2_CM.slddrt`), non un `.drwdot` inesistente. FeatureFillet è saltato di proposito.
 
@@ -63,7 +63,7 @@ FeatureFillet è saltato di proposito.
 
 Chiave in **Impostazioni** (resta in `localStorage`; una copia locale `.openrouter-local` è gitignorata). L’app manda la chiave al server in header e nel body di `/api/interpret`. Senza chiave: interprete demo locale. **Con chiave, se OpenRouter risponde 401/errore, non parte la demo**: in chat compare l’errore e l’albero resta vuoto, così non viene creato il pezzo sbagliato. La chiave non va nel git.
 
-Modello predefinito: **Claude Sonnet 4.6** (`anthropic/claude-sonnet-4.6`) — CAD / codice, JSON schema v2, solo chiave OpenRouter. In Impostazioni: Veloce (GPT-4.1 mini o Gemini 2.5 Flash), Massima qualità (GPT-4.1). Nota: [modelli OpenRouter](docs/modelli-openrouter.md).
+Modello predefinito: **Claude Sonnet 4.6** (`anthropic/claude-sonnet-4.6`) — CAD / codice, JSON schema v2, solo chiave OpenRouter. In Impostazioni: Veloce (GPT-4.1 mini o Gemini 2.5 Flash), Massima qualità (GPT-4.1). Parità MecAgent (solo flusso UI, non branding): [mecagent-parity](docs/mecagent-parity.md).
 
 ## Bridge COM
 

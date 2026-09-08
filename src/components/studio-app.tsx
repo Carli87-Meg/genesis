@@ -1,15 +1,22 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowDown,
   ArrowUp,
+  Box,
   Check,
+  ChevronDown,
+  FileSpreadsheet,
+  Layers,
   Loader2,
-  Send,
+  PanelRight,
+  Play,
+  Plus,
+  RotateCcw,
   Settings2,
   Trash2,
-  Box,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -41,12 +48,34 @@ import {
   resolveStoredModel,
 } from "@/lib/openrouter-models"
 
-const EXAMPLES = [
-  "Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM",
-  "Piastra 80 × 50 × 8 mm con 4 fori Ø6 agli angoli, raccordi R1",
-  "Albero Ø20 mm, lunghezza 80 mm, raccordi R1 alle estremità",
-  "Boccola: Ø30 esterno, Ø16 interno, altezza 25 mm",
-]
+const STAFFA =
+  "Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM"
+
+const ACTIONS = [
+  {
+    id: "pezzo",
+    label: "Crea pezzo",
+    icon: Plus,
+    prompt: "Piastra 80 × 50 × 8 mm con 4 fori Ø6 agli angoli",
+    followUp: false,
+  },
+  {
+    id: "tavola",
+    label: "Tavola A3 CM",
+    icon: FileSpreadsheet,
+    prompt: "Tavola A3 CM con Cartiglio_CM, viste in 1° angolo del pezzo o assieme corrente",
+    followUp: true,
+  },
+  {
+    id: "assieme",
+    label: "Assieme",
+    icon: Layers,
+    prompt:
+      "Assieme: piastra 80×50×8 mm, perno Ø8×24 mm, rondella Ø18/Ø8.2×2 mm, mate concentrici e coincidenti sulle facce",
+    followUp: false,
+  },
+  { id: "staffa", label: "Staffa a L", icon: Box, prompt: STAFFA, followUp: false },
+] as const
 
 const SETTINGS_KEY = "solidworks-ia-settings"
 
@@ -64,7 +93,17 @@ const DEFAULT_SETTINGS: Settings = {
   modelRev: SETTINGS_MODEL_REV,
 }
 
-type ChatMsg = { role: "user" | "assistant"; text: string }
+type ChatMsg = {
+  role: "user" | "assistant"
+  text: string
+  error?: boolean
+  proposal?: {
+    opCount: number
+    jobCount?: number
+    names: string[]
+    source: "demo" | "openrouter"
+  }
+}
 
 export function StudioApp() {
   const [ready, setReady] = useState(false)
@@ -87,6 +126,11 @@ export function StudioApp() {
   const [sendOpen, setSendOpen] = useState(false)
   const [bridgeResult, setBridgeResult] = useState<BridgeResponse | null>(null)
   const [bridgeErr, setBridgeErr] = useState<string | null>(null)
+  const [swOk, setSwOk] = useState<boolean | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [show3d, setShow3d] = useState(false)
+  const [isLg, setIsLg] = useState(false)
+  const chatEnd = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     try {
@@ -115,11 +159,40 @@ export function StudioApp() {
     setReady(true)
   }, [])
 
-  const visibleOps = useMemo(
-    () => ops.filter((o) => o.status !== "discarded"),
-    [ops],
-  )
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)")
+    const apply = () => setIsLg(mq.matches)
+    apply()
+    mq.addEventListener("change", apply)
+    return () => mq.removeEventListener("change", apply)
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/solidworks", { cache: "no-store" })
+        const data = (await res.json()) as BridgeResponse
+        if (alive) setSwOk(Boolean(data.ok))
+      } catch {
+        if (alive) setSwOk(false)
+      }
+    }
+    void tick()
+    const id = setInterval(() => void tick(), 15000)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [])
+
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages, busy])
+
+  const visibleOps = useMemo(() => ops.filter((o) => o.status !== "discarded"), [ops])
   const keyOn = settings.openRouterKey.length > 8
+  const canExecute = visibleOps.length > 0 || Boolean(job && job.length > 1)
 
   function liveSettings(): Settings {
     try {
@@ -186,11 +259,21 @@ export function StudioApp() {
       if (operations.length === 0) {
         throw new Error(data.error || data.warning || "Nessuna operazione dal modello.")
       }
+      const names =
+        data.job && data.job.length > 1
+          ? data.job.map((d) => d.document.name)
+          : [data.payload?.document.name || "Pezzo"]
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
           text: data.warning ? `${data.summary}\n${data.warning}` : data.summary,
+          proposal: {
+            opCount: operations.length,
+            jobCount: data.job?.length,
+            names,
+            source: data.source,
+          },
         },
       ])
       setOps(operations.map((o) => ({ ...o, status: "accepted" as const })))
@@ -204,7 +287,8 @@ export function StudioApp() {
         ...m,
         {
           role: "assistant",
-          text: `Errore interpretazione: ${err instanceof Error ? err.message : String(err)}`,
+          error: true,
+          text: `Non ho potuto proporre il pezzo: ${err instanceof Error ? err.message : String(err)}`,
         },
       ])
     } finally {
@@ -223,9 +307,7 @@ export function StudioApp() {
   }
 
   function editNumber(id: string, field: string, value: number) {
-    setOps((list) =>
-      list.map((o) => (o.id === id ? ({ ...o, [field]: value } as TreeOp) : o)),
-    )
+    setOps((list) => list.map((o) => (o.id === id ? ({ ...o, [field]: value } as TreeOp) : o)))
   }
 
   async function sendToSolidWorks() {
@@ -255,6 +337,7 @@ export function StudioApp() {
     setSendOpen(true)
     const mergedSteps: BridgeResponse["steps"] = []
     let last: BridgeResponse | null = null
+    let failed: string | null = null
     try {
       for (let i = 0; i < docs.length; i++) {
         const doc = docs[i]
@@ -270,14 +353,30 @@ export function StudioApp() {
         last = data
         for (const s of data.steps ?? []) mergedSteps.push(s)
         if (!data.ok) {
-          setBridgeErr(data.error || `Invio fallito su ${doc.document.name}`)
+          failed = data.error || `Invio fallito su ${doc.document.name}`
+          setBridgeErr(failed)
           setBridgeResult({ ...data, steps: mergedSteps })
-          return
+          break
         }
       }
-      if (last) setBridgeResult({ ...last, steps: mergedSteps })
+      if (!failed && last) setBridgeResult({ ...last, steps: mergedSteps })
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          error: Boolean(failed),
+          text: failed
+            ? `Esecuzione interrotta: ${failed}`
+            : `Eseguito in SolidWorks: ${docs.map((d) => d.document.name).join(", ")}.`,
+        },
+      ])
     } catch (err) {
-      setBridgeErr(err instanceof Error ? err.message : String(err))
+      const msg = err instanceof Error ? err.message : String(err)
+      setBridgeErr(msg)
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", error: true, text: `Bridge irraggiungibile: ${msg}` },
+      ])
     } finally {
       setSendBusy(false)
       setSendProgress(null)
@@ -356,36 +455,73 @@ export function StudioApp() {
     setTimeout(() => setNotice(null), 8000)
   }
 
+  function resetConversation() {
+    setMessages([])
+    setOps([])
+    setPayload(null)
+    setJob(null)
+    setDfm([])
+    setSource(null)
+    setBridgeErr(null)
+    setBridgeResult(null)
+    setPrompt("")
+  }
+
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        Caricamento…
+      <div className="flex min-h-dvh items-center justify-center text-sm text-muted-foreground">
+        Caricamento copilot…
       </div>
     )
   }
 
+  const rail = (
+    <PianoRail
+      ops={ops}
+      job={job}
+      dfm={dfm}
+      source={source}
+      model={settings.model}
+      show3d={show3d}
+      visibleOps={visibleOps}
+      onToggle3d={() => setShow3d((v) => !v)}
+      onMove={move}
+      onEdit={editNumber}
+      onToggleOp={(i) =>
+        setOps((list) =>
+          list.map((o, idx) =>
+            idx === i
+              ? { ...o, status: o.status === "discarded" ? "accepted" : "discarded" }
+              : o,
+          ),
+        )
+      }
+    />
+  )
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Box className="size-5" />
-          <div>
-            <h1 className="text-sm font-semibold leading-none">Solidworks_IA</h1>
-            <p className="text-xs text-muted-foreground">
-              Chat → albero parametrico → SolidWorks via bridge HTTP→COM
-            </p>
-          </div>
+    <div className="flex h-dvh flex-col bg-background">
+      <header className="flex items-center gap-2 border-b px-3 py-2 sm:px-4">
+        <Box className="size-5 shrink-0" />
+        <div className="min-w-0">
+          <h1 className="text-sm font-semibold leading-none">Solidworks_IA</h1>
+          <p className="truncate text-xs text-muted-foreground">Copilot sul CAD aperto · schema v2</p>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Badge variant={keyOn ? "default" : "secondary"}>
-            {keyOn ? "OpenRouter" : "Demo"}
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          <Badge variant={swOk ? "default" : "secondary"} className="hidden sm:inline-flex">
+            {swOk === null ? "SolidWorks…" : swOk ? "SolidWorks collegato" : "Bridge off"}
           </Badge>
-          {keyOn && source === "demo" && (
-            <Badge variant="outline">interprete: demo</Badge>
-          )}
-          {source === "openrouter" && (
-            <Badge variant="outline">interprete: LLM</Badge>
-          )}
+          <Badge variant={keyOn ? "default" : "outline"}>{keyOn ? "OpenRouter" : "Demo"}</Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="lg:hidden"
+            onClick={() => setPanelOpen(true)}
+            aria-label="Apri piano"
+          >
+            <PanelRight className="size-4" />
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -396,216 +532,186 @@ export function StudioApp() {
             }}
           >
             <Settings2 className="size-3.5" />
-            Impostazioni
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={visibleOps.length === 0 || sendBusy}
-            onClick={() => void sendToSolidWorks()}
-          >
-            {sendBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-            Invia a SolidWorks
+            <span className="hidden sm:inline">Impostazioni</span>
           </Button>
         </div>
       </header>
 
-      {notice && (
-        <div className="border-b bg-muted px-4 py-2 text-sm">✓ {notice}</div>
-      )}
+      {notice && <div className="border-b bg-muted px-4 py-2 text-sm">✓ {notice}</div>}
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-3">
-        <section className="flex min-h-[320px] flex-col border-b lg:border-r lg:border-b-0">
-          <div className="border-b px-4 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Chat di progetto
-          </div>
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-1 flex-col">
           <ScrollArea className="flex-1">
-            <div className="space-y-3 p-4">
-              {messages.length === 0 && (
-                <div className="text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground">Nessun messaggio</p>
-                  <p className="mt-1">
-                    Descrivi il pezzo in italiano o inglese, con quote in millimetri.
+            <div className="mx-auto w-full max-w-2xl space-y-4 px-4 py-6">
+              {messages.length === 0 && !busy && (
+                <div className="py-8 text-center sm:py-14">
+                  <p className="text-lg font-medium">Cosa vuoi fare in SolidWorks?</p>
+                  <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                    Descrivi il pezzo o l&apos;azione. Il copilot propone operazioni parametriche,
+                    poi <span className="text-foreground">Esegui</span> le manda al CAD aperto
+                    (bridge HTTP→COM, non un add-in).
                   </p>
+                  <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {ACTIONS.map((a) => (
+                      <Button
+                        key={a.id}
+                        type="button"
+                        variant="outline"
+                        className="h-auto flex-col items-start gap-1 px-3 py-3 text-left"
+                        disabled={busy}
+                        onClick={() => void interpret(a.prompt, a.followUp && Boolean(payload))}
+                      >
+                        <a.icon className="size-4 text-muted-foreground" />
+                        <span className="text-xs font-medium">{a.label}</span>
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               )}
+
               {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={
-                    m.role === "user"
-                      ? "ml-8 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
-                      : "mr-8 rounded-lg bg-muted px-3 py-2 text-sm"
-                  }
-                >
-                  {m.text}
+                <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                  <div
+                    className={
+                      m.role === "user"
+                        ? "max-w-[90%] rounded-2xl bg-primary px-3.5 py-2 text-sm text-primary-foreground"
+                        : m.error
+                          ? "max-w-[90%] rounded-2xl border border-destructive/40 bg-destructive/10 px-3.5 py-2 text-sm"
+                          : "max-w-[90%] rounded-2xl bg-muted px-3.5 py-2 text-sm"
+                    }
+                  >
+                    <p className="whitespace-pre-wrap">{m.text}</p>
+                    {m.proposal && (
+                      <div className="mt-3 space-y-2 border-t border-border/60 pt-2">
+                        <p className="text-xs text-muted-foreground">
+                          Proposta: {m.proposal.names.join(" · ")} · {m.proposal.opCount} operazioni
+                          {m.proposal.jobCount && m.proposal.jobCount > 1
+                            ? ` · kit ${m.proposal.jobCount} documenti`
+                            : ""}
+                          {" · "}
+                          {m.proposal.source === "demo" ? "demo" : "OpenRouter"}
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={!canExecute || sendBusy}
+                          onClick={() => void sendToSolidWorks()}
+                        >
+                          {sendBusy ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Play className="size-3.5" />
+                          )}
+                          Esegui in SolidWorks
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
+
               {busy && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Interpretazione…
+                  <Loader2 className="size-4 animate-spin" />
+                  Il copilot sta traducendo in operazioni CAD…
                 </div>
               )}
+              <div ref={chatEnd} />
             </div>
           </ScrollArea>
-          <div className="space-y-2 border-t p-3">
-            <div className="flex flex-wrap gap-1.5">
-              {EXAMPLES.map((ex) => (
-                <Button
-                  key={ex}
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  className="h-auto max-w-full whitespace-normal py-1 text-left"
-                  onClick={() => void interpret(ex, false)}
-                >
-                  {ex}
-                </Button>
-              ))}
+
+          <div className="border-t bg-background p-3 sm:p-4">
+            <div className="mx-auto w-full max-w-2xl space-y-2">
+              {messages.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {ACTIONS.map((a) => (
+                    <Button
+                      key={a.id}
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      disabled={busy}
+                      onClick={() => void interpret(a.prompt, a.followUp && Boolean(payload))}
+                    >
+                      {a.label}
+                    </Button>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    disabled={!payload || busy}
+                    onClick={() => {
+                      if (prompt.trim()) void interpret(prompt, true)
+                    }}
+                  >
+                    <RotateCcw className="size-3" />
+                    Revisione
+                  </Button>
+                  <Button type="button" variant="ghost" size="xs" onClick={resetConversation}>
+                    Nuova chat
+                  </Button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Staffa a L 80×50×8 mm, parete 40 mm, boccola e tavola A3 CM…"
+                  className="min-h-[72px] resize-none"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      void interpret(prompt, Boolean(payload))
+                    }
+                  }}
+                />
+                <div className="flex flex-col gap-1.5">
+                  <Button
+                    type="button"
+                    className="self-end"
+                    disabled={busy || !prompt.trim()}
+                    onClick={() => void interpret(prompt, Boolean(payload))}
+                  >
+                    Proponi
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!canExecute || sendBusy}
+                    onClick={() => void sendToSolidWorks()}
+                  >
+                    {sendBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+                    Esegui
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Staffa a L 80×50×8 mm, parete 40 mm, boccola e tavola A3…"
-                className="min-h-[72px] resize-none"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    void interpret(prompt, true)
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                className="self-end"
-                disabled={busy || !prompt.trim()}
-                onClick={() => void interpret(prompt, true)}
-              >
-                Invia
+          </div>
+        </main>
+
+        <aside className="hidden w-[300px] shrink-0 flex-col border-l lg:flex">{isLg ? rail : null}</aside>
+      </div>
+
+      {panelOpen && !isLg && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            aria-label="Chiudi piano"
+            onClick={() => setPanelOpen(false)}
+          />
+          <div className="absolute inset-y-0 right-0 flex w-[min(100%,20rem)] flex-col bg-background shadow-lg">
+            <div className="flex items-center justify-between border-b px-3 py-2">
+              <span className="text-sm font-medium">Piano</span>
+              <Button type="button" variant="ghost" size="icon-sm" onClick={() => setPanelOpen(false)}>
+                <X className="size-4" />
               </Button>
             </div>
+            {rail}
           </div>
-        </section>
-
-        <section className="flex min-h-[280px] flex-col border-b lg:border-r lg:border-b-0">
-          <div className="border-b px-4 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Anteprima 3D
-          </div>
-          <div className="min-h-0 flex-1">
-            <Preview3D operations={visibleOps} />
-          </div>
-        </section>
-
-        <section className="flex min-h-[280px] flex-col">
-          <div className="border-b px-4 py-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Timeline operazioni
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="space-y-2 p-3">
-              {ops.length === 0 && (
-                <div className="text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground">Nessuna operazione</p>
-                  <p className="mt-1">
-                    L&apos;albero feature è la fonte di verità: accetta, scarta, riordina, modifica le quote.
-                  </p>
-                </div>
-              )}
-              {ops.map((op, i) => (
-                <div
-                  key={op.id + i}
-                  className={`rounded-lg border p-2 text-sm ${op.status === "discarded" ? "opacity-50" : ""}`}
-                >
-                  <div className="flex items-center gap-1">
-                    <span className="font-medium">{op.name || opLabel(op)}</span>
-                    <Badge variant="outline" className="ml-auto">
-                      {op.type}
-                    </Badge>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    <Button type="button" size="icon-xs" variant="ghost" onClick={() => move(i, -1)}>
-                      <ArrowUp />
-                    </Button>
-                    <Button type="button" size="icon-xs" variant="ghost" onClick={() => move(i, 1)}>
-                      <ArrowDown />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="ghost"
-                      onClick={() =>
-                        setOps((list) =>
-                          list.map((o, idx) =>
-                            idx === i
-                              ? {
-                                  ...o,
-                                  status: o.status === "discarded" ? "accepted" : "discarded",
-                                }
-                              : o,
-                          ),
-                        )
-                      }
-                    >
-                      {op.status === "discarded" ? <Check /> : <Trash2 />}
-                    </Button>
-                    {"depth" in op && typeof op.depth === "number" && (
-                      <label className="ml-auto flex items-center gap-1 text-xs">
-                        profondità
-                        <Input
-                          className="h-6 w-16"
-                          type="number"
-                          value={op.depth}
-                          onChange={(e) => editNumber(op.id, "depth", Number(e.target.value))}
-                        />
-                      </label>
-                    )}
-                    {"radius" in op && typeof op.radius === "number" && (
-                      <label className="ml-auto flex items-center gap-1 text-xs">
-                        R
-                        <Input
-                          className="h-6 w-16"
-                          type="number"
-                          value={op.radius}
-                          onChange={(e) => editNumber(op.id, "radius", Number(e.target.value))}
-                        />
-                      </label>
-                    )}
-                    {"diameter" in op && typeof op.diameter === "number" && (
-                      <label className="ml-auto flex items-center gap-1 text-xs">
-                        Ø
-                        <Input
-                          className="h-6 w-16"
-                          type="number"
-                          value={op.diameter}
-                          onChange={(e) => editNumber(op.id, "diameter", Number(e.target.value))}
-                        />
-                      </label>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {dfm.length > 0 && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs">
-                  <p className="mb-1 font-medium">DFM</p>
-                  {dfm.map((d, i) => (
-                    <p key={i}>
-                      {d.severity === "error" ? "●" : "○"} {d.message}
-                    </p>
-                  ))}
-                </div>
-              )}
-              {source && (
-                <p className="px-1 text-[11px] text-muted-foreground">
-                  Fonte: {source === "demo" ? "demo locale" : "OpenRouter"}
-                {source === "openrouter" && settings.model ? ` · ${settings.model}` : ""}
-                {" · "}schema v2
-                {job ? ` · kit ${job.length} documenti` : ""}
-                </p>
-              )}
-            </div>
-          </ScrollArea>
-        </section>
-      </main>
+        </div>
+      )}
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="sm:max-w-md" showCloseButton>
@@ -613,8 +719,8 @@ export function StudioApp() {
             <DialogTitle>Impostazioni</DialogTitle>
             <DialogDescription>
               Chiave OpenRouter solo su questo PC (localStorage, mai git). Senza chiave: demo.
-              Con chiave, un errore OpenRouter non cade sulla demo.
-              Default: Claude Sonnet 4.6 (CAD / codice). Vedi README → OpenRouter.
+              Con chiave, un errore OpenRouter non cade sulla demo. Consigliato / Veloce / Qualità:
+              default Claude Sonnet 4.6.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -667,11 +773,7 @@ export function StudioApp() {
           </div>
           <DialogFooter>
             {draft.openRouterKey && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setDraft((s) => ({ ...s, openRouterKey: "" }))}
-              >
+              <Button type="button" variant="ghost" onClick={() => setDraft((s) => ({ ...s, openRouterKey: "" }))}>
                 Rimuovi chiave
               </Button>
             )}
@@ -688,16 +790,14 @@ export function StudioApp() {
       <Dialog open={sendOpen} onOpenChange={setSendOpen}>
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Invia a SolidWorks</DialogTitle>
+            <DialogTitle>Esegui in SolidWorks</DialogTitle>
             <DialogDescription>
-              Payload schema v2 verso il bridge locale. Traversata feature con
-              FeatureByPositionReverse + GetTypeName2 (mai SelectByID2).
+              Payload schema v2 verso il bridge locale. FeatureByPositionReverse + GetTypeName2.
             </DialogDescription>
           </DialogHeader>
           {sendBusy && (
             <p className="flex items-center gap-2 text-sm">
-              <Loader2 className="size-4 animate-spin" />{" "}
-              {sendProgress || "Esecuzione COM in corso…"}
+              <Loader2 className="size-4 animate-spin" /> {sendProgress || "Esecuzione COM in corso…"}
             </p>
           )}
           {bridgeErr && (
@@ -730,6 +830,142 @@ export function StudioApp() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function PianoRail({
+  ops,
+  job,
+  dfm,
+  source,
+  model,
+  show3d,
+  visibleOps,
+  onToggle3d,
+  onMove,
+  onEdit,
+  onToggleOp,
+}: {
+  ops: TreeOp[]
+  job: SolidWorksDocumentPayload[] | null
+  dfm: InterpretResult["dfm"]
+  source: "demo" | "openrouter" | null
+  model: string
+  show3d: boolean
+  visibleOps: TreeOp[]
+  onToggle3d: () => void
+  onMove: (i: number, dir: -1 | 1) => void
+  onEdit: (id: string, field: string, value: number) => void
+  onToggleOp: (i: number) => void
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b px-3 py-2">
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Piano</p>
+        <p className="text-[11px] text-muted-foreground">Albero e kit · secondario</p>
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-2 p-3">
+          {job && job.length > 1 && (
+            <div className="flex flex-wrap gap-1">
+              {job.map((d) => (
+                <Badge key={d.document.name} variant="outline">
+                  {d.document.type === "drawing"
+                    ? "Tavola"
+                    : d.document.type === "assembly"
+                      ? "Assieme"
+                      : "Parte"}{" "}
+                  {d.document.name}
+                </Badge>
+              ))}
+            </div>
+          )}
+          {ops.length === 0 && (
+            <div className="text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">Nessuna proposta</p>
+              <p className="mt-1">Dopo «Proponi» qui vedi le feature da eseguire nel CAD.</p>
+            </div>
+          )}
+          {ops.map((op, i) => (
+            <div
+              key={op.id + i}
+              className={`rounded-lg border p-2 text-xs ${op.status === "discarded" ? "opacity-50" : ""}`}
+            >
+              <div className="flex items-center gap-1">
+                <span className="font-medium">{op.name || opLabel(op)}</span>
+                <Badge variant="outline" className="ml-auto">
+                  {op.type}
+                </Badge>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-0.5">
+                <Button type="button" size="icon-xs" variant="ghost" onClick={() => onMove(i, -1)}>
+                  <ArrowUp />
+                </Button>
+                <Button type="button" size="icon-xs" variant="ghost" onClick={() => onMove(i, 1)}>
+                  <ArrowDown />
+                </Button>
+                <Button type="button" size="icon-xs" variant="ghost" onClick={() => onToggleOp(i)}>
+                  {op.status === "discarded" ? <Check /> : <Trash2 />}
+                </Button>
+                {"depth" in op && typeof op.depth === "number" && (
+                  <label className="ml-auto flex items-center gap-1">
+                    mm
+                    <Input
+                      className="h-6 w-14"
+                      type="number"
+                      value={op.depth}
+                      onChange={(e) => onEdit(op.id, "depth", Number(e.target.value))}
+                    />
+                  </label>
+                )}
+                {"diameter" in op && typeof op.diameter === "number" && (
+                  <label className="ml-auto flex items-center gap-1">
+                    Ø
+                    <Input
+                      className="h-6 w-14"
+                      type="number"
+                      value={op.diameter}
+                      onChange={(e) => onEdit(op.id, "diameter", Number(e.target.value))}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+          ))}
+          {dfm.length > 0 && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs">
+              <p className="mb-1 font-medium">DFM</p>
+              {dfm.map((d, i) => (
+                <p key={i}>
+                  {d.severity === "error" ? "●" : "○"} {d.message}
+                </p>
+              ))}
+            </div>
+          )}
+          {source && (
+            <p className="px-1 text-[11px] text-muted-foreground">
+              {source === "demo" ? "demo locale" : "OpenRouter"}
+              {source === "openrouter" && model ? ` · ${model}` : ""} · schema v2
+            </p>
+          )}
+        </div>
+      </ScrollArea>
+      <div className="border-t">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:bg-muted/50"
+          onClick={onToggle3d}
+        >
+          Anteprima 3D (facoltativa)
+          <ChevronDown className={`size-3.5 transition ${show3d ? "rotate-180" : ""}`} />
+        </button>
+        {show3d && (
+          <div className="h-48 border-t">
+            <Preview3D operations={visibleOps} />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

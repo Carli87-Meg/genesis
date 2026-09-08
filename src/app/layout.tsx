@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Solidworks_IA",
   description:
-    "Progettazione a linguaggio naturale: chat, albero feature, anteprima 3D e invio a SolidWorks via bridge HTTP→COM.",
+    "Copilot SolidWorks: linguaggio naturale → operazioni schema v2 → esegui nel CAD aperto via bridge HTTP→COM.",
 }
 
 export default function RootLayout({

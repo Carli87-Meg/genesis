@@ -42,15 +42,15 @@ try {
     await chip.click()
   } else {
     await page.getByPlaceholder(/Staffa a L|Piastra/i).fill(PROMPT)
-    await page.getByRole("button", { name: /^Invia$/ }).click()
+    await page.getByRole("button", { name: /^Proponi$/ }).click()
   }
 
-  await page.getByText(/kit 4 documenti|Fonte: demo|Fonte: OpenRouter|Staffa a L 80/i).first().waitFor({
+  await page.getByText(/Proposta:|kit 4 documenti|Esegui in SolidWorks|Staffa a L 80/i).first().waitFor({
     timeout: 180000,
   })
   await page.waitForTimeout(2500)
 
-  const send = page.getByRole("button", { name: /Invia a SolidWorks/i })
+  const send = page.getByRole("button", { name: /Esegui in SolidWorks/i }).first()
   await send.click()
 
   const dialog = page.getByRole("dialog")

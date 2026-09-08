@@ -31,30 +31,30 @@ try {
   await page.getByRole("button", { name: /Impostazioni/i }).waitFor({ timeout: 15000 })
 
   const badgeFake = (await page.locator("header").innerText()).replace(/\s+/g, " ")
-  await page.getByRole("button", { name: /Piastra 80/i }).first().click()
-  await page.getByText(/rifiutato la chiave|Errore interpretazione/i).first().waitFor({
+  await page.getByRole("button", { name: /Crea pezzo/i }).first().click()
+  await page.getByText(/rifiutato la chiave|Non ho potuto proporre/i).first().waitFor({
     timeout: 30000,
   })
-  const chatFake = await page.locator("section").first().innerText()
-  const treeFake = await page.locator("section").nth(2).innerText()
-  const sendEnabledFake = await page.getByRole("button", { name: /Invia a SolidWorks/i }).isEnabled()
+  const chatFake = await page.locator("main").innerText()
+  const treeFake = await page.locator("aside").innerText().catch(() => "")
+  const sendEnabledFake = await page.getByRole("button", { name: /^Esegui$/ }).isEnabled()
   fs.mkdirSync("sw-out", { recursive: true })
   await page.screenshot({ path: "sw-out/verify-or-ui-401.png", fullPage: true })
 
   await page.evaluate(() => localStorage.removeItem("solidworks-ia-settings"))
   await page.reload({ waitUntil: "domcontentloaded" })
   await page.getByRole("button", { name: /Impostazioni/i }).waitFor({ timeout: 15000 })
-  await page.getByRole("button", { name: /Piastra 80/i }).first().click()
-  await page.getByText(/Fonte: demo locale|Estrusione/i).first().waitFor({ timeout: 20000 })
-  const treeDemo = await page.locator("section").nth(2).innerText()
-  const sendEnabledDemo = await page.getByRole("button", { name: /Invia a SolidWorks/i }).isEnabled()
+  await page.getByRole("button", { name: /Crea pezzo/i }).first().click()
+  await page.getByText(/Proposta:|Estrusione|demo locale/i).first().waitFor({ timeout: 20000 })
+  const treeDemo = await page.locator("aside").innerText().catch(() => "")
+  const sendEnabledDemo = await page.getByRole("button", { name: /Esegui in SolidWorks/i }).first().isEnabled()
   await page.screenshot({ path: "sw-out/verify-or-ui-demo.png", fullPage: true })
 
   const result = {
     badgeFake: badgeFake.slice(0, 180),
-    chatHas401: /rifiutato la chiave|401/i.test(chatFake),
+    chatHas401: /rifiutato la chiave|401|Non ho potuto proporre/i.test(chatFake),
     sendEnabledFake,
-    treeFakeEmpty: /Nessuna operazione/i.test(treeFake),
+    treeFakeEmpty: /Nessuna proposta/i.test(treeFake),
     sendEnabledDemo,
     treeDemoHasExtrude: /estrusion|extrude|schizzo/i.test(treeDemo),
   }

@@ -1,5 +1,5 @@
 /**
- * Verifica UI: interpret (demo o OpenRouter) + Invia a SolidWorks.
+ * Verifica UI: interpret (demo o OpenRouter) + Esegui in SolidWorks.
  * Non stampa la chiave.
  */
 import { chromium } from "playwright"
@@ -57,13 +57,13 @@ try {
 
   const badge = (await page.locator("header").innerText()).replace(/\s+/g, " ")
 
-  const chip = page.getByRole("button", { name: /Piastra 80/i }).first()
+  const chip = page.getByRole("button", { name: /Crea pezzo|Staffa a L/i }).first()
   await chip.click()
-  await page.getByText(/Fonte:|Piastra 80|Timeline|extrude|Estrusione/i).first().waitFor({ timeout: 60000 })
+  await page.getByText(/Proposta:|Estrusione|kit /i).first().waitFor({ timeout: 60000 })
   await page.waitForTimeout(800)
 
-  const treeText = await page.locator("section").nth(2).innerText()
-  const send = page.getByRole("button", { name: /Invia a SolidWorks/i })
+  const treeText = await page.locator("aside").innerText().catch(() => "")
+  const send = page.getByRole("button", { name: /Esegui in SolidWorks/i }).first()
   const sendEnabled = await send.isEnabled()
   if (sendEnabled) {
     await send.click()
