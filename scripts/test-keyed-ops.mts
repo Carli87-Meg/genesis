@@ -58,7 +58,7 @@ const keyed = {
       document: { type: "drawing", name: "TavolaStaffa", sheetFormat: "A3" },
       operations: [
         { sheetFormat: { format: "A3" } },
-        { standardViews: { model: "CAD/AssiemeStaffa.SLDASM", includeIso: true, firstAngle: true } },
+        { standardViews: { modelPath: "CAD/AssiemeStaffa.SLDASM", includeIso: true, firstAngle: true } },
       ],
     },
   ],
@@ -83,7 +83,11 @@ if (!hole || hole.kind !== "circle") throw new Error("missing Ø6.5")
 if (Math.abs(hole.cx + 30) > 0.6 || Math.abs(hole.cy + 15) > 0.6) {
   throw new Error(`centerX/reframe atteso -30,-15, got ${hole.cx},${hole.cy}`)
 }
-if ((result.job ?? []).length < 3) throw new Error("job " + jobTypes.join(","))
+  if ((result.job ?? []).length < 3) throw new Error("job " + jobTypes.join(","))
+  const views = result.job?.find((d) => d.document.type === "drawing")?.operations.find((o) => o.type === "standardViews")
+  if (views && views.type === "standardViews" && !views.model) {
+    throw new Error("drawing model missing")
+  }
 console.log(
   JSON.stringify({
     ok: true,

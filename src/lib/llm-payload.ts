@@ -272,6 +272,14 @@ function normalizeOp(raw: unknown, index: number): CadOperation | null {
   if (aliased === "sketch" && Array.isArray(next.contours)) {
     next.contours = next.contours.map(normalizeContour).filter(Boolean)
   }
+  if (aliased === "standardViews" || aliased === "drawingView") {
+    if (typeof next.model !== "string" || !next.model.trim()) {
+      const alt = [next.modelPath, next.path, next.file, next.assembly].find(
+        (v) => typeof v === "string" && v.trim(),
+      )
+      if (typeof alt === "string") next.model = alt
+    }
+  }
   return next as CadOperation
 }
 
