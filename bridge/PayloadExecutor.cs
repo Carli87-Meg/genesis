@@ -646,7 +646,8 @@ internal sealed partial class PayloadExecutor
                         true, false, false, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
                         false, false, false, false, 0.0, 0.0,
                         false, false, false, false,
-                        merge, true, true) as Feature;
+                        merge, true, true,
+                        (int)swStartConditions_e.swStartSketchPlane, 0.0, false) as Feature;
                 }
             }
         }

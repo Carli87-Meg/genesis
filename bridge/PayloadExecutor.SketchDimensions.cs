@@ -74,8 +74,11 @@ internal sealed partial class PayloadExecutor
 
         TryFullyDefineSketch(sketchMgr);
         var n = CountSketchFeatureDims(model);
-        n += DimensionAllSegments(model);
-        n += DimensionCentersFromOrigin(model);
+        if (n == 0)
+        {
+            n += DimensionAllSegments(model);
+            n += DimensionCentersFromOrigin(model);
+        }
 
         RevealAllDisplayDimensions(model);
         try { model.GraphicsRedraw2(); } catch { /* ignore */ }
@@ -689,7 +692,10 @@ internal sealed partial class PayloadExecutor
                 try { model.ViewZoomtofit2(); } catch { /* ignore */ }
                 try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
                 try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
-                var n = QuoteActiveSketch(model, sketchMgr);
+                RevealAllDisplayDimensions(model);
+                var n = CountDimsOn(feat);
+                if (n == 0)
+                    n = QuoteActiveSketch(model, sketchMgr);
                 CaptureQuotedSketch(model);
                 sketchMgr.InsertSketch(false);
                 Step("QuoteProfile", n > 0, $"{feat.Name}: {n} quote");

@@ -44,10 +44,6 @@
       "name": "TaglioFori",
       "sketch": "s2",
       "throughAll": true
-    },
-    {
-      "id": "q1",
-      "type": "quoteSketches"
     }
   ]
 }

@@ -89,13 +89,16 @@ def main() -> int:
     sw = win32com.client.GetObject(Class="SldWorks.Application")
     target = sys.argv[1] if len(sys.argv) > 1 else "PiastraDueSchizzi.SLDPRT"
     path = os.path.join(CAD, target)
-    errors = 0
-    warnings = 0
-    model = sw.OpenDoc6(path, swDocPART, swOpenDocOptions_Silent, "", errors, warnings)
+    model = sw.OpenDoc(path, swDocPART)
+    if model is None:
+        model = sw.ActiveDoc
     if model is None:
         print(json.dumps({"error": "open failed", "path": path}))
         return 1
-    sw.ActivateDoc3(model.GetTitle, True, 0, errors)
+    try:
+        sw.ActivateDoc(model.GetTitle)
+    except Exception:
+        pass
     try:
         model.ViewZoomtofit2()
     except Exception:
