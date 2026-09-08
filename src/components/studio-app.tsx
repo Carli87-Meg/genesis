@@ -86,8 +86,16 @@ export function StudioApp() {
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<Settings>
         const next = { ...DEFAULT_SETTINGS, ...parsed }
+        next.openRouterKey = next.openRouterKey.replace(/[\r\n\t]/g, "").trim()
         setSettings(next)
         setDraft(next)
+        if (next.openRouterKey.length > 8) {
+          void syncSessionKey(next.openRouterKey, false)
+        } else {
+          void fetch("/api/or-session", { method: "DELETE" })
+        }
+      } else {
+        void fetch("/api/or-session", { method: "DELETE" })
       }
     } catch {
       /* ignore */
@@ -101,6 +109,29 @@ export function StudioApp() {
   )
   const keyOn = settings.openRouterKey.length > 8
 
+  function liveSettings(): Settings {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<Settings>
+        return {
+          ...DEFAULT_SETTINGS,
+          ...settings,
+          ...parsed,
+          openRouterKey: (parsed.openRouterKey || settings.openRouterKey)
+            .replace(/[\r\n\t]/g, "")
+            .trim(),
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return {
+      ...settings,
+      openRouterKey: settings.openRouterKey.replace(/[\r\n\t]/g, "").trim(),
+    }
+  }
+
   async function interpret(text: string, asFollowUp = false) {
     const q = text.trim()
     if (!q || busy) return
@@ -108,7 +139,8 @@ export function StudioApp() {
     setPrompt("")
     setMessages((m) => [...m, { role: "user", text: q }])
     try {
-      const key = settings.openRouterKey.replace(/[\r\n\t]/g, "").trim()
+      const live = liveSettings()
+      const key = live.openRouterKey.replace(/[^\x20-\x7E]/g, "")
       const res = await fetch("/api/interpret", {
         method: "POST",
         cache: "no-store",
@@ -116,8 +148,9 @@ export function StudioApp() {
           "Content-Type": "application/json",
           ...(key
             ? {
-                "x-openrouter-key": key.replace(/[^\x20-\x7E]/g, ""),
-                "x-openrouter-model": settings.model,
+                Authorization: `Bearer ${key}`,
+                "x-openrouter-key": key,
+                "x-openrouter-model": live.model,
               }
             : {}),
         },
@@ -126,12 +159,17 @@ export function StudioApp() {
           followUp: asFollowUp && Boolean(payload),
           previous: asFollowUp ? payload ?? undefined : undefined,
           openRouterKey: key || undefined,
-          model: settings.model,
+          token: key || undefined,
+          model: live.model,
+          useStoredKey: Boolean(key),
         }),
       })
       const data = (await res.json()) as InterpretResult & { error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       const operations = data.operations ?? data.payload?.operations ?? []
+      if (operations.length === 0) {
+        throw new Error(data.error || data.warning || "Nessuna operazione dal modello.")
+      }
       setMessages((m) => [
         ...m,
         {
@@ -145,6 +183,7 @@ export function StudioApp() {
       setDfm(data.dfm ?? [])
       setSource(data.source)
     } catch (err) {
+      setSource(null)
       setMessages((m) => [
         ...m,
         {
@@ -259,18 +298,45 @@ export function StudioApp() {
     return clean
   }
 
-  function saveSettings() {
-    const clean = persistSettings(draft)
+  async function syncSessionKey(key: string, verify: boolean) {
+    const clean = key.replace(/[\r\n\t]/g, "").trim()
+    if (clean.length <= 8) {
+      await fetch("/api/or-session", { method: "DELETE" })
+      return { stored: false, valid: false as boolean | undefined, status: 0, detail: "" }
+    }
+    const res = await fetch("/api/or-session", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ openRouterKey: clean, verify }),
+    })
+    return (await res.json()) as {
+      stored?: boolean
+      valid?: boolean
+      status?: number
+      detail?: string
+    }
+  }
+
+  async function saveSettings() {
+    const el = document.getElementById("or-key") as HTMLInputElement | null
+    const fromDom = el?.value ?? draft.openRouterKey
+    const clean = persistSettings({ ...draft, openRouterKey: fromDom })
     setSettingsOpen(false)
-    const tail = clean.openRouterKey
-      ? `${clean.openRouterKey.slice(0, 8)}…${clean.openRouterKey.slice(-4)}`
-      : "demo"
+    if (!clean.openRouterKey) {
+      await syncSessionKey("", false)
+      setNotice("Chiave rimossa. Resta la demo locale.")
+      setTimeout(() => setNotice(null), 5000)
+      return
+    }
+    const check = await syncSessionKey(clean.openRouterKey, true)
+    const tail = `${clean.openRouterKey.slice(0, 8)}…${clean.openRouterKey.slice(-4)}`
     setNotice(
-      clean.openRouterKey
-        ? `Chiave salvata (${tail}).`
-        : "Chiave rimossa. Resta la demo locale.",
+      check.valid === false
+        ? `Chiave salvata (${tail}) ma OpenRouter l'ha rifiutata${check.status ? ` (${check.status})` : ""}. I pezzi non verranno creati finché la chiave non è valida. La demo non parte in automatico.`
+        : `Chiave salvata (${tail}). OpenRouter ok.`,
     )
-    setTimeout(() => setNotice(null), 4000)
+    setTimeout(() => setNotice(null), 8000)
   }
 
   if (!ready) {
@@ -529,9 +595,9 @@ export function StudioApp() {
           <DialogHeader>
             <DialogTitle>Impostazioni</DialogTitle>
             <DialogDescription>
-              La chiave OpenRouter resta nel browser (localStorage), mai nel repository.
-              Senza chiave l&apos;interprete usa la demo locale. Il bridge è un processo
-              Windows HTTP→COM su questa macchina.
+              La chiave OpenRouter resta nel browser (localStorage) e una copia locale
+              serve solo a questo PC (mai git). Senza chiave: demo. Con chiave rifiutata
+              da OpenRouter non parte la demo, così non nasce il pezzo sbagliato.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -590,7 +656,7 @@ export function StudioApp() {
             <Button type="button" variant="outline" onClick={() => setSettingsOpen(false)}>
               Annulla
             </Button>
-            <Button type="button" onClick={saveSettings}>
+            <Button type="button" onClick={() => void saveSettings()}>
               Salva
             </Button>
           </DialogFooter>

@@ -1,7 +1,10 @@
 import { interpretDemo } from "@/lib/demo-interpreter"
 import { interpretFromLlmText } from "@/lib/llm-payload"
+import { redactSecrets, resolveOpenRouterKey } from "@/lib/or-key"
 import { runDfm } from "@/lib/dfm"
 import type { InterpretResult, SolidWorksDocumentPayload } from "@/lib/payload"
+
+export const maxDuration = 60
 
 const SYSTEM = `Sei un interprete CAD per Solidworks_IA.
 Rispondi SOLO con un oggetto JSON valido, senza markdown e senza testo intorno.
@@ -41,10 +44,13 @@ type InterpretBody = {
   previous?: SolidWorksDocumentPayload
   openRouterKey?: string
   apiKey?: string
+  token?: string
   model?: string
+  useStoredKey?: boolean
 }
 
 export async function POST(req: Request) {
+  const started = Date.now()
   let body: InterpretBody
   try {
     body = (await req.json()) as InterpretBody
@@ -57,24 +63,26 @@ export async function POST(req: Request) {
     return Response.json({ error: "Prompt vuoto" }, { status: 400 })
   }
 
-  const headerKey = sanitizeKey(req.headers.get("x-openrouter-key"))
-  const bodyKey = sanitizeKey(body.openRouterKey || body.apiKey)
-  const envKey = sanitizeKey(process.env.OPENROUTER_API_KEY)
-  const key = headerKey || bodyKey || envKey
-  const keySource: InterpretResult["keySource"] = headerKey
-    ? "header"
-    : bodyKey
-      ? "body"
-      : envKey
-        ? "env"
-        : "none"
+  const { key, keySource } = await resolveOpenRouterKey({
+    headerKey: req.headers.get("x-openrouter-key"),
+    authHeader: req.headers.get("authorization"),
+    bodyKey: body.openRouterKey || body.apiKey || body.token,
+    envKey: process.env.OPENROUTER_API_KEY,
+    allowFile: body.useStoredKey === true,
+  })
   const model =
-    (req.headers.get("x-openrouter-model")?.trim() || body.model?.trim() || process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini").trim()
+    (req.headers.get("x-openrouter-model")?.trim() ||
+      body.model?.trim() ||
+      process.env.OPENROUTER_MODEL ||
+      "openai/gpt-4o-mini").trim()
 
   if (!key) {
     const demo = interpretDemo(prompt)
     demo.hasKey = false
     demo.keySource = "none"
+    console.info(
+      `[interpret] demo keySource=none model=${model} promptLen=${prompt.length} ops=${demo.operations.length} ms=${Date.now() - started}`,
+    )
     return Response.json(demo)
   }
 
@@ -83,16 +91,44 @@ export async function POST(req: Request) {
     llm.hasKey = true
     llm.keySource = keySource
     llm.model = model
+    console.info(
+      `[interpret] openrouter keySource=${keySource} keyLen=${key.length} model=${model} ops=${llm.operations.length} ms=${Date.now() - started}`,
+    )
     return Response.json(llm)
   } catch (err) {
-    const demo = interpretDemo(prompt)
-    demo.hasKey = true
-    demo.keySource = keySource
-    demo.model = model
-    demo.warning = `OpenRouter non disponibile, uso demo. ${redact(err instanceof Error ? err.message : String(err))}`
-    demo.dfm = runDfm(demo.payload)
-    return Response.json(demo)
+    const raw = redactSecrets(err instanceof Error ? err.message : String(err))
+    const error = openRouterUserMessage(raw)
+    console.info(
+      `[interpret] FAIL keySource=${keySource} keyLen=${key.length} model=${model} ms=${Date.now() - started} ${raw.slice(0, 160)}`,
+    )
+    return Response.json(
+      {
+        error,
+        summary: error,
+        source: "openrouter",
+        warning: raw,
+        hasKey: true,
+        keySource,
+        model,
+        operations: [],
+        dfm: [],
+      } satisfies Partial<InterpretResult> & { error: string },
+      { status: 502 },
+    )
   }
+}
+
+function openRouterUserMessage(raw: string): string {
+  if (/HTTP 401|user not found|invalid api key|unauthorized/i.test(raw)) {
+    return "OpenRouter ha rifiutato la chiave (401). Incolla una chiave valida in Impostazioni. Non creo un pezzo demo al posto di quello richiesto."
+  }
+  if (/HTTP 402|credits|payment/i.test(raw)) {
+    return "Credito OpenRouter esaurito. Non creo un pezzo demo al posto di quello richiesto."
+  }
+  if (/HTTP 429/i.test(raw)) {
+    return "OpenRouter: troppe richieste. Riprova tra poco. Non creo un pezzo demo al posto di quello richiesto."
+  }
+  return `OpenRouter non ha prodotto un pezzo. ${raw} Non uso la demo: con una chiave impostata il pezzo sbagliato non viene creato.`
 }
 
 async function callOpenRouter(
@@ -116,15 +152,17 @@ async function callOpenRouter(
     ],
   }
 
+  const headers = {
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer": "http://127.0.0.1:4317",
+    "X-Title": "Solidworks_IA",
+  }
+
   let res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "http://127.0.0.1:4317",
-      "X-Title": "Solidworks_IA",
-    },
+    headers,
     body: JSON.stringify(payload),
   })
 
@@ -134,12 +172,7 @@ async function callOpenRouter(
     res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://127.0.0.1:4317",
-        "X-Title": "Solidworks_IA",
-      },
+      headers,
       body: JSON.stringify(withoutFmt),
     })
   }
@@ -166,14 +199,6 @@ async function callOpenRouter(
   if (meta.parse === "repaired" && meta.droppedOps > 0) {
     result.warning = `JSON LLM riparato: ${meta.droppedOps} operazioni non riconosciute ignorate.`
   }
+  result.dfm = runDfm(result.payload)
   return result
-}
-
-function sanitizeKey(raw: string | null | undefined): string {
-  if (!raw) return ""
-  return raw.replace(/[\r\n\t]/g, "").trim()
-}
-
-function redact(text: string): string {
-  return text.replace(/sk-or-v1-[A-Za-z0-9_-]+/g, "sk-or-v1-<redacted>").replace(/Bearer\s+\S+/gi, "Bearer <redacted>")
 }

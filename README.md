@@ -61,7 +61,7 @@ FeatureFillet è saltato di proposito.
 
 ## OpenRouter
 
-Chiave in **Impostazioni** (resta in `localStorage`) oppure `OPENROUTER_API_KEY` in `.env.local`. L’app manda la chiave al server in header e nel body di `/api/interpret`. Senza chiave: interprete demo locale. La chiave non va nel git.
+Chiave in **Impostazioni** (resta in `localStorage`; una copia locale `.openrouter-local` è gitignorata). L’app manda la chiave al server in header e nel body di `/api/interpret`. Senza chiave: interprete demo locale. **Con chiave, se OpenRouter risponde 401/errore, non parte la demo**: in chat compare l’errore e l’albero resta vuoto, così non viene creato il pezzo sbagliato. La chiave non va nel git.
 
 ## Bridge COM
 

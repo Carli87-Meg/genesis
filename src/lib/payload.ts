@@ -212,7 +212,7 @@ export type InterpretResult = {
   job?: SolidWorksDocumentPayload[]
   dfm: DfmIssue[]
   hasKey?: boolean
-  keySource?: "header" | "body" | "env" | "none"
+  keySource?: "header" | "body" | "file" | "env" | "none"
   model?: string
 }
 
