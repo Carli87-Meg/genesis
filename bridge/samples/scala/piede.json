@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Piede",
+    "attachToActive": false,
+    "savePath": "CAD/Piede.SLDPRT",
+    "snapshotPath": "Export/Piede.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoPiede",
+      "plane": "Top",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 80, "height": 80 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "Estrusione",
+      "sketch": "s1",
+      "depth": 8,
+      "merge": true
+    }
+  ]
+}

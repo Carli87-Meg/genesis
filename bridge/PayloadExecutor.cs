@@ -11,6 +11,8 @@ internal sealed partial class PayloadExecutor
     private readonly List<ExecStep> _steps = [];
     private readonly Dictionary<string, string> _created = new(StringComparer.OrdinalIgnoreCase);
     private ISldWorks? _sw;
+    private string? _sketchStillPath;
+    private bool _quotedStillSaved;
 
     public (List<ExecStep> Steps, List<FeatureInfo> Features, string? DocTitle, int? DocType, string? SavedPath, string? SnapshotPath) Execute(
         ISldWorks swApp,
@@ -19,6 +21,8 @@ internal sealed partial class PayloadExecutor
         _steps.Clear();
         _created.Clear();
         _sw = swApp;
+        _sketchStillPath = payload.Document.SnapshotPath;
+        _quotedStillSaved = false;
 
         swApp.Visible = true;
         try { swApp.UserControl = true; } catch { /* ignore */ }
@@ -82,6 +86,8 @@ internal sealed partial class PayloadExecutor
                     Step("ForceRebuild3", false, FormatEx(ex));
                 }
 
+                EnableVisibleDimensions(model);
+                try { model.ShowFeatureDimensions(); } catch { /* optional */ }
                 try { model.ViewZoomtofit2(); } catch { /* optional */ }
             }
 
@@ -480,7 +486,8 @@ internal sealed partial class PayloadExecutor
 
         var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
-        try { sketchMgr.AddToDB = true; } catch { /* ignore */ }
+        try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
+        try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
         EnableVisibleDimensions(model);
 
         var contours = op.Field("contours");
@@ -494,6 +501,8 @@ internal sealed partial class PayloadExecutor
             }
         }
 
+        dims = Math.Max(dims, QuoteActiveSketch(model, sketchMgr));
+        CaptureQuotedSketch(model);
         sketchMgr.InsertSketch(false);
         RememberLatest(model, op.Id, op.Name);
         Step("SketchManager", true, $"{n} contorni su {plane}, {dims} quote");
@@ -512,8 +521,7 @@ internal sealed partial class PayloadExecutor
                     var cy = Len(c, "cy", units);
                     var w = Len(c, "width", units);
                     var h = Len(c, "height", units);
-                    var created = sketchMgr.CreateCornerRectangle(cx - w / 2, cy - h / 2, 0, cx + w / 2, cy + h / 2, 0);
-                    dims += DimensionRectangle(model, created, cx, cy, w, h);
+                    sketchMgr.CreateCornerRectangle(cx - w / 2, cy - h / 2, 0, cx + w / 2, cy + h / 2, 0);
                     return true;
                 }
                 case "circle":
@@ -524,8 +532,7 @@ internal sealed partial class PayloadExecutor
                     var r = c.TryGetProperty("radius", out var rj) && rj.ValueKind == JsonValueKind.Number
                         ? ToMeters(rj.GetDouble(), units)
                         : d / 2;
-                    var circ = sketchMgr.CreateCircleByRadius(cx, cy, 0, r) as ISketchSegment;
-                    dims += DimensionCircle(model, circ, cx, cy, r);
+                    sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
                     return true;
                 }
                 case "line":
@@ -536,27 +543,6 @@ internal sealed partial class PayloadExecutor
                     if (c.TryGetProperty("construction", out var cons) && cons.ValueKind == JsonValueKind.True)
                     {
                         try { line.ConstructionGeometry = true; } catch { /* ignore */ }
-                    }
-                    else
-                    {
-                        try
-                        {
-                            model.ClearSelection2(true);
-                            line.Select4(false, null);
-                            var mx = (Len(c, "x1", units) + Len(c, "x2", units)) / 2;
-                            var my = (Len(c, "y1", units) + Len(c, "y2", units)) / 2;
-                            var dim = model.AddDimension2(mx + 0.008, my + 0.008, 0);
-                            if (dim is not null)
-                            {
-                                dims++;
-                                RevealDimension(dim);
-                                Step("AddDimension2", true, "line");
-                            }
-                        }
-                        catch
-                        {
-                            /* optional */
-                        }
                     }
                     return true;
                 }
@@ -684,13 +670,15 @@ internal sealed partial class PayloadExecutor
 
         var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
-        try { sketchMgr.AddToDB = true; } catch { /* ignore */ }
+        try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
+        try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
         EnableVisibleDimensions(model);
         var cx = ToMeters(op.Num("cx"), units);
         var cy = ToMeters(op.Num("cy"), units);
         var r = ToMeters(op.Num("diameter", 6), units) / 2;
-        var circ = sketchMgr.CreateCircleByRadius(cx, cy, 0, r) as ISketchSegment;
-        DimensionCircle(model, circ, cx, cy, r);
+        sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
+        QuoteActiveSketch(model, sketchMgr);
+        CaptureQuotedSketch(model);
         sketchMgr.InsertSketch(false);
 
         var cutOp = new CadOperation
@@ -1051,9 +1039,27 @@ internal sealed partial class PayloadExecutor
         double targetRadiusM = 0)
     {
         var e = entity.ToLowerInvariant();
-        if (mateKind is "concentric" || e is "inner" or "outer" or "hole" or "foro" or "od" or "id")
+        var comp = FindComponent(assy, key);
+        if (comp is null)
+        {
+            Step("FindComponent", false, key);
+            return false;
+        }
+
+        if (mateKind is "concentric" || e is "hole" or "foro")
         {
             return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: mateKind is "concentric" && append), selData, targetRadiusM);
+        }
+
+        if (e is "inner" or "outer" or "od" or "id")
+        {
+            if (mateKind is "concentric")
+            {
+                return SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: true), selData, targetRadiusM);
+            }
+
+            return SelectComponentPlanarFace(assy, key, wantTop: e is "outer", append, selData)
+                   || SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: true), selData, targetRadiusM);
         }
 
         if (e is "pad" or "boss" or "boss-top" or "faccia-boss")
@@ -2061,8 +2067,31 @@ internal sealed partial class PayloadExecutor
         }
     }
 
+    private void CaptureQuotedSketch(ModelDoc2 model)
+    {
+        if (_quotedStillSaved) return;
+        if (string.IsNullOrWhiteSpace(_sketchStillPath)) return;
+
+        EnableVisibleDimensions(model);
+        RevealAllDisplayDimensions(model);
+        try { model.ViewDisplayHiddenremoved(); } catch { /* HLR */ }
+        try { model.ViewZoomtofit2(); } catch { /* ignore */ }
+        try { model.GraphicsRedraw2(); } catch { /* ignore */ }
+        Thread.Sleep(450);
+
+        var dest = Path.ChangeExtension(Path.GetFullPath(_sketchStillPath), null) + "-schizzo.jpg";
+        if (SaveJpegFromView(model, dest, 1600, 1200))
+        {
+            _quotedStillSaved = true;
+            Step("SaveBMP", true, dest + " (schizzo quotato)");
+        }
+
+        try { model.ViewDisplayShaded(); } catch { /* restore */ }
+    }
+
     private void SnapshotQuotedSketch(ModelDoc2 model, DocumentSpec spec)
     {
+        if (_quotedStillSaved) return;
         if (model.GetType() != (int)swDocumentTypes_e.swDocPART) return;
         var dest = spec.SnapshotPath;
         if (string.IsNullOrWhiteSpace(dest)) return;
@@ -2094,30 +2123,19 @@ internal sealed partial class PayloadExecutor
         try
         {
             EnableVisibleDimensions(model);
+            RevealAllDisplayDimensions(model);
+            try { model.ShowFeatureDimensions(); } catch { /* ignore */ }
             model.ClearSelection2(true);
             sketchFeat.Select2(false, 0);
             model.EditSketch();
+            try { ((ISketchManager)model.SketchManager).DisplayWhenAdded = true; } catch { /* ignore */ }
+            try { model.ViewDisplayHiddenremoved(); } catch { /* ignore */ }
             try { model.ViewZoomtofit2(); } catch { /* ignore */ }
             try { model.GraphicsRedraw2(); } catch { /* ignore */ }
-            Thread.Sleep(300);
-            var dir = Path.GetDirectoryName(dest);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            var bmp = Path.ChangeExtension(dest, ".bmp");
-            var ok = false;
-            try { ok = model.SaveBMP(bmp, 1600, 1200); } catch { /* ignore */ }
-            if (!ok)
+            Thread.Sleep(450);
+            if (SaveJpegFromView(model, dest, 1600, 1200))
             {
-                try { model.ViewZoomtofit2(); } catch { /* ignore */ }
-            }
-
-            if (File.Exists(bmp))
-            {
-                using (var img = System.Drawing.Image.FromFile(bmp))
-                {
-                    img.Save(dest, System.Drawing.Imaging.ImageFormat.Jpeg);
-                }
-
-                try { File.Delete(bmp); } catch { /* ignore */ }
+                _quotedStillSaved = true;
                 Step("SaveBMP", true, dest);
             }
             else
@@ -2135,6 +2153,33 @@ internal sealed partial class PayloadExecutor
             catch { /* already closed */ }
 
             try { model.ClearSelection2(true); } catch { /* ignore */ }
+            try { model.ViewDisplayShaded(); } catch { /* restore */ }
+        }
+    }
+
+    private bool SaveJpegFromView(ModelDoc2 model, string dest, int w, int h)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(dest);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            var bmp = Path.ChangeExtension(dest, ".bmp");
+            var ok = false;
+            try { ok = model.SaveBMP(bmp, w, h); } catch { /* ignore */ }
+            if (!ok || !File.Exists(bmp)) return false;
+
+            using (var img = System.Drawing.Image.FromFile(bmp))
+            {
+                img.Save(dest, System.Drawing.Imaging.ImageFormat.Jpeg);
+            }
+
+            try { File.Delete(bmp); } catch { /* keep bmp if locked */ }
+            return File.Exists(dest);
+        }
+        catch (Exception ex)
+        {
+            Step("SaveBMP", false, FormatEx(ex));
+            return false;
         }
     }
 

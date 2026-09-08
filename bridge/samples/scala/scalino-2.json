@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Scalino2",
+    "attachToActive": false,
+    "savePath": "CAD/Scalino2.SLDPRT",
+    "snapshotPath": "Export/Scalino2.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoScalino",
+      "plane": "Top",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 700, "height": 220 },
+        { "kind": "circle", "cx": -346, "cy": 0, "diameter": 8 },
+        { "kind": "circle", "cx": 346, "cy": 0, "diameter": 8 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "Estrusione",
+      "sketch": "s1",
+      "depth": 6,
+      "merge": true
+    }
+  ]
+}

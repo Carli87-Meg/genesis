@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemeScala",
+    "attachToActive": false,
+    "savePath": "CAD/AssiemeScala.SLDASM",
+    "snapshotPath": "Export/AssiemeScala.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "cSx",
+      "type": "component",
+      "name": "FiancataSx",
+      "path": "CAD/FiancataSx.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": true
+    },
+    {
+      "id": "cDx",
+      "type": "component",
+      "name": "FiancataDx",
+      "path": "CAD/FiancataDx.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 708
+    },
+    {
+      "id": "cS1",
+      "type": "component",
+      "name": "Scalino1",
+      "path": "CAD/Scalino1.SLDPRT",
+      "x": -220,
+      "y": 20,
+      "z": 354
+    },
+    {
+      "id": "cS2",
+      "type": "component",
+      "name": "Scalino2",
+      "path": "CAD/Scalino2.SLDPRT",
+      "x": 220,
+      "y": 20,
+      "z": 354
+    },
+    {
+      "id": "cP",
+      "type": "component",
+      "name": "Piede",
+      "path": "CAD/Piede.SLDPRT",
+      "x": -300,
+      "y": -20,
+      "z": 0
+    },
+    {
+      "id": "m1",
+      "type": "mate",
+      "name": "ConcS1Sx",
+      "mateType": "concentric",
+      "component1": "cS1",
+      "component2": "cSx",
+      "entity1": "inner",
+      "entity2": "inner",
+      "diameter": 8
+    },
+    {
+      "id": "m2",
+      "type": "mate",
+      "name": "ConcS1Dx",
+      "mateType": "concentric",
+      "component1": "cS1",
+      "component2": "cDx",
+      "entity1": "inner",
+      "entity2": "inner",
+      "diameter": 8
+    },
+    {
+      "id": "m3",
+      "type": "mate",
+      "name": "ConcS2Sx",
+      "mateType": "concentric",
+      "component1": "cS2",
+      "component2": "cSx",
+      "entity1": "inner",
+      "entity2": "inner",
+      "diameter": 8
+    },
+    {
+      "id": "m4",
+      "type": "mate",
+      "name": "ConcS2Dx",
+      "mateType": "concentric",
+      "component1": "cS2",
+      "component2": "cDx",
+      "entity1": "inner",
+      "entity2": "inner",
+      "diameter": 8
+    },
+    {
+      "id": "m5",
+      "type": "mate",
+      "name": "CoincS1Sx",
+      "mateType": "coincident",
+      "component1": "cS1",
+      "component2": "cSx",
+      "entity1": "bottom",
+      "entity2": "top"
+    },
+    {
+      "id": "m6",
+      "type": "mate",
+      "name": "CoincPiedeSx",
+      "mateType": "coincident",
+      "component1": "cP",
+      "component2": "cSx",
+      "entity1": "top",
+      "entity2": "bottom"
+    },
+    { "id": "v1", "type": "inspect" }
+  ]
+}

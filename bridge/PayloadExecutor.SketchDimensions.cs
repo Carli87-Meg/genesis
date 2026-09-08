@@ -7,28 +7,215 @@ internal sealed partial class PayloadExecutor
 {
     private void EnableVisibleDimensions(ModelDoc2 model)
     {
-        foreach (var pref in new[]
-                 {
-                     (int)swUserPreferenceToggle_e.swInputDimValOnCreate,
-                 })
-        {
-            try { _sw?.SetUserPreferenceToggle(pref, false); } catch { /* ignore */ }
-        }
+        TogglePref(model, (int)swUserPreferenceToggle_e.swInputDimValOnCreate, false);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swSketchCreateDimensionOnlyWhenEntered, false);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swViewDisplayHideAllTypes, false);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swAddDrivenDimensions, false);
 
-        foreach (var pref in new[]
-                 {
-                     (int)swUserPreferenceToggle_e.swDisplayAnnotations,
-                     (int)swUserPreferenceToggle_e.swDisplayFeatureDimensions,
-                     (int)swUserPreferenceToggle_e.swDisplayReferenceDimensions,
-                     (int)swUserPreferenceToggle_e.swDisplayAllAnnotations,
-                 })
-        {
-            try { model.SetUserPreferenceToggle(pref, true); } catch { /* ignore */ }
-            try { _sw?.SetUserPreferenceToggle(pref, true); } catch { /* ignore */ }
-        }
+        TogglePref(model, (int)swUserPreferenceToggle_e.swHideShowSketchDimensions, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swDisplayAnnotations, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swDisplayFeatureDimensions, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swDisplayReferenceDimensions, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swDisplayAllAnnotations, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swDisplaySketches, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swDisplayDimensionsFlatToScreen, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swAutoNormalToSketchMode, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swAddDimensionsToSketchEntity, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swAddDimensionsToLineEntity, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swAddDimensionsToRectangleEntity, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swAddDimensionsToArcEntity, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swAddDimensionsToCircleEntity, true);
+        TogglePref(model, (int)swUserPreferenceToggle_e.swAddDimensionsToSlotEntity, true);
 
-        try { model.SetUserPreferenceToggle((int)swUserPreferenceToggle_e.swHideShowSketchDimensions, false); }
+        EnlargeDimensionText(model);
+    }
+
+    private void TogglePref(ModelDoc2 model, int pref, bool on)
+    {
+        try { _sw?.SetUserPreferenceToggle(pref, on); } catch { /* ignore */ }
+        try { model.SetUserPreferenceToggle(pref, on); } catch { /* ignore */ }
+        try { ((IModelDocExtension)model.Extension).SetUserPreferenceToggle(pref, 0, on); }
         catch { /* ignore */ }
+    }
+
+    private static void EnlargeDimensionText(ModelDoc2 model)
+    {
+        try
+        {
+            var ext = (IModelDocExtension)model.Extension;
+            var tf = ext.GetUserPreferenceTextFormat(
+                (int)swUserPreferenceTextFormat_e.swDetailingDimensionTextFormat,
+                (int)swUserPreferenceOption_e.swDetailingNoOptionSpecified);
+            if (tf is null) return;
+            try { tf.CharHeight = 0.004; } catch { /* ignore */ }
+            try { tf.WidthFactor = 1.0; } catch { /* ignore */ }
+            ext.SetUserPreferenceTextFormat(
+                (int)swUserPreferenceTextFormat_e.swDetailingDimensionTextFormat,
+                (int)swUserPreferenceOption_e.swDetailingNoOptionSpecified,
+                tf);
+        }
+        catch
+        {
+            /* optional */
+        }
+    }
+
+    /// <summary>
+    /// Native SolidWorks quoting: auto-dims on create, then FullyDefineSketch, then AddDimension2.
+    /// </summary>
+    private int QuoteActiveSketch(ModelDoc2 model, ISketchManager sketchMgr)
+    {
+        try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
+        try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
+        try { sketchMgr.AutoSolve = true; } catch { /* ignore */ }
+        EnableVisibleDimensions(model);
+
+        var n = CountSketchFeatureDims(model);
+        if (n == 0)
+        {
+            TryFullyDefineSketch(sketchMgr);
+            n = CountSketchFeatureDims(model);
+        }
+
+        if (n == 0)
+        {
+            n = DimensionAllSegments(model);
+        }
+
+        RevealAllDisplayDimensions(model);
+        n = Math.Max(n, CountSketchFeatureDims(model));
+        try { model.GraphicsRedraw2(); } catch { /* ignore */ }
+        return n;
+    }
+
+    private void TryFullyDefineSketch(ISketchManager sketchMgr)
+    {
+        var relations =
+            (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Equal
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Horizontal
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Vertical
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Tangent
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Perpendicular
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Colinear
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Concentric
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Parallel
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Midpoint
+            | (int)swSketchFullyDefineRelationType_e.swSketchFullyDefineRelationType_Coincident;
+        try
+        {
+            var n = sketchMgr.FullyDefineSketch(
+                true,
+                true,
+                relations,
+                true,
+                (int)swAutodimScheme_e.swAutodimSchemeBaseline,
+                null!,
+                (int)swAutodimScheme_e.swAutodimSchemeBaseline,
+                null!,
+                (int)swAutodimHorizontalPlacement_e.swAutodimHorizontalPlacementBelow,
+                (int)swAutodimVerticalPlacement_e.swAutodimVerticalPlacementRight);
+            Step("FullyDefineSketch", true, $"result={n}");
+        }
+        catch (Exception ex)
+        {
+            Step("FullyDefineSketch", false, FormatEx(ex));
+        }
+    }
+
+    private int DimensionAllSegments(ModelDoc2 model)
+    {
+        var segs = ActiveSketchSegments(model);
+        var n = 0;
+        var lines = new List<ISketchSegment>();
+        foreach (var s in segs)
+        {
+            int t;
+            try { t = s.GetType(); }
+            catch { continue; }
+
+            if (t == (int)swSketchSegments_e.swSketchLINE)
+            {
+                lines.Add(s);
+                continue;
+            }
+
+            if (t is (int)swSketchSegments_e.swSketchARC or (int)swSketchSegments_e.swSketchELLIPSE)
+            {
+                double cx = 0, cy = 0, r = 0;
+                if (TryCircle(s, out cx, out cy, out r))
+                {
+                    n += DimensionCircle(model, s, cx, cy, r);
+                }
+            }
+        }
+
+        if (lines.Count >= 4)
+        {
+            double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+            foreach (var s in lines)
+            {
+                if (!TryLineEnds(s, out var x1, out var y1, out var x2, out var y2)) continue;
+                minX = Math.Min(minX, Math.Min(x1, x2));
+                maxX = Math.Max(maxX, Math.Max(x1, x2));
+                minY = Math.Min(minY, Math.Min(y1, y2));
+                maxY = Math.Max(maxY, Math.Max(y1, y2));
+            }
+
+            var w = maxX - minX;
+            var h = maxY - minY;
+            if (w > 1e-8 && h > 1e-8)
+            {
+                n += DimensionRectangle(model, lines, (minX + maxX) / 2, (minY + maxY) / 2, w, h);
+            }
+        }
+        else if (lines.Count == 1)
+        {
+            var s = lines[0];
+            try
+            {
+                model.ClearSelection2(true);
+                s.Select4(false, null);
+                if (TryLineEnds(s, out var x1, out var y1, out var x2, out var y2))
+                {
+                    var dim = model.AddDimension2((x1 + x2) / 2 + 0.008, (y1 + y2) / 2 + 0.008, 0);
+                    if (dim is not null)
+                    {
+                        n++;
+                        RevealDimension(dim);
+                        Step("AddDimension2", true, "line");
+                    }
+                }
+            }
+            catch
+            {
+                /* optional */
+            }
+        }
+
+        return n;
+    }
+
+    private static bool TryCircle(ISketchSegment seg, out double cx, out double cy, out double r)
+    {
+        cx = cy = r = 0;
+        try
+        {
+            if (seg is not ISketchArc arc) return false;
+            if (arc.GetCenterPoint2() is not ISketchPoint c) return false;
+            cx = c.X;
+            cy = c.Y;
+            try { r = arc.GetRadius(); }
+            catch
+            {
+                try { r = ((ISketchArc)seg).GetRadius(); }
+                catch { r = 0; }
+            }
+            return r > 1e-9;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private int DimensionRectangle(ModelDoc2 model, object? created, double cx, double cy, double w, double h)
@@ -208,6 +395,12 @@ internal sealed partial class PayloadExecutor
     private static List<ISketchSegment> SegmentsFrom(object? created)
     {
         var list = new List<ISketchSegment>();
+        if (created is IEnumerable<ISketchSegment> typed)
+        {
+            list.AddRange(typed);
+            return list;
+        }
+
         foreach (var obj in AsArray(created) ?? [])
         {
             if (obj is ISketchSegment s) list.Add(s);
@@ -253,14 +446,22 @@ internal sealed partial class PayloadExecutor
         if (dim is null) return;
         try
         {
-            if (dim is IDisplayDimension dd)
+            IDisplayDimension? dd = dim as IDisplayDimension;
+            if (dd is null && dim is DisplayDimension boxed) dd = boxed;
+            if (dd is null) return;
+            try { dd.ShowDimensionValue = true; } catch { /* ignore */ }
+            try { dd.MarkedForDrawing = true; } catch { /* ignore */ }
+            try
             {
-                dd.ShowDimensionValue = true;
-                try { dd.MarkedForDrawing = true; } catch { /* ignore */ }
                 if (dd.GetAnnotation() is IAnnotation ann)
                 {
-                    try { ann.Visible = (int)swAnnotationVisibilityState_e.swAnnotationVisible; } catch { /* ignore */ }
+                    ann.Visible = (int)swAnnotationVisibilityState_e.swAnnotationVisible;
+                    /* visible is enough for SaveBMP */
                 }
+            }
+            catch
+            {
+                /* ignore */
             }
         }
         catch
@@ -269,36 +470,95 @@ internal sealed partial class PayloadExecutor
         }
     }
 
+    private void RevealAllDisplayDimensions(ModelDoc2 model)
+    {
+        foreach (var feat in WalkFeatures(model))
+        {
+            try
+            {
+                var dd = feat.GetFirstDisplayDimension() as IDisplayDimension;
+                while (dd is not null)
+                {
+                    RevealDimension(dd);
+                    dd = feat.GetNextDisplayDimension(dd) as IDisplayDimension;
+                }
+            }
+            catch
+            {
+                /* feature without dims */
+            }
+        }
+    }
+
+    private int CountSketchFeatureDims(ModelDoc2 model)
+    {
+        Feature? last = null;
+        foreach (var feat in WalkFeatures(model))
+        {
+            string tn;
+            try { tn = feat.GetTypeName2(); }
+            catch { tn = ""; }
+            if (tn is "ProfileFeature") last = feat;
+        }
+
+        return last is null ? 0 : CountDimsOn(last);
+    }
+
     private int CountDisplayDimensions(ModelDoc2 model)
+    {
+        var n = 0;
+        var sketch = 0;
+        foreach (var feat in WalkFeatures(model))
+        {
+            var c = CountDimsOn(feat);
+            n += c;
+            string tn;
+            try { tn = feat.GetTypeName2(); }
+            catch { tn = ""; }
+            if (tn is "ProfileFeature") sketch += c;
+        }
+
+        if (sketch > 0)
+        {
+            Step("SketchDisplayDims", true, $"{sketch} quote su schizzi");
+        }
+
+        return n;
+    }
+
+    private static int CountDimsOn(Feature feat)
     {
         var n = 0;
         try
         {
-            var feat = (Feature)model.FirstFeature();
-            while (feat is not null)
+            var dd = feat.GetFirstDisplayDimension() as IDisplayDimension;
+            while (dd is not null)
             {
-                try
-                {
-                    var dd = feat.GetFirstDisplayDimension() as IDisplayDimension;
-                    while (dd is not null)
-                    {
-                        n++;
-                        dd = feat.GetNextDisplayDimension(dd) as IDisplayDimension;
-                    }
-                }
-                catch
-                {
-                    /* feature without dims */
-                }
-
-                feat = feat.GetNextFeature() as Feature;
+                n++;
+                dd = feat.GetNextDisplayDimension(dd) as IDisplayDimension;
             }
         }
         catch
         {
-            /* ignore */
+            return n;
         }
 
         return n;
+    }
+
+    private static IEnumerable<Feature> WalkFeatures(ModelDoc2 model)
+    {
+        Feature? feat;
+        try { feat = (Feature)model.FirstFeature(); }
+        catch { yield break; }
+
+        while (feat is not null)
+        {
+            yield return feat;
+            Feature? next;
+            try { next = feat.GetNextFeature() as Feature; }
+            catch { yield break; }
+            feat = next;
+        }
     }
 }

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "FiancataSx",
+    "attachToActive": false,
+    "savePath": "CAD/FiancataSx.SLDPRT",
+    "snapshotPath": "Export/FiancataSx.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoFiancata",
+      "plane": "Front",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 600, "height": 40 },
+        { "kind": "circle", "cx": -220, "cy": 0, "diameter": 8 },
+        { "kind": "circle", "cx": 220, "cy": 0, "diameter": 8 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "Estrusione",
+      "sketch": "s1",
+      "depth": 8,
+      "merge": true
+    }
+  ]
+}

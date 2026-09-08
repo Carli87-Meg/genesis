@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "PiastraQuotata",
+    "attachToActive": false,
+    "savePath": "CAD/PiastraQuotata.SLDPRT",
+    "snapshotPath": "Export/PiastraQuotata.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [
+    { "name": "L", "value": 80 },
+    { "name": "W", "value": 50 },
+    { "name": "T", "value": 8 },
+    { "name": "D", "value": 6.5 }
+  ],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoPiastra",
+      "plane": "Top",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 80, "height": 50 },
+        { "kind": "circle", "cx": 32, "cy": 17, "diameter": 6.5 },
+        { "kind": "circle", "cx": -32, "cy": 17, "diameter": 6.5 },
+        { "kind": "circle", "cx": 32, "cy": -17, "diameter": 6.5 },
+        { "kind": "circle", "cx": -32, "cy": -17, "diameter": 6.5 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "EstrusionePiastra",
+      "sketch": "s1",
+      "depth": 8,
+      "merge": true
+    }
+  ]
+}
