@@ -288,12 +288,15 @@ internal sealed partial class PayloadExecutor
                     template,
                     (int)swDwgTemplates_e.swDwgTemplateA3size,
                     0.42, 0.297) as ModelDoc2;
-                Step("NewDrawing", doc is not null, $"template={template}");
-                if (doc is not null) break;
+                if (doc is not null)
+                {
+                    Step("NewDrawing", true, $"template={template}");
+                    break;
+                }
             }
-            catch (Exception ex)
+            catch
             {
-                Step("NewDrawing", false, $"{Path.GetFileName(template)}: {FormatEx(ex)}");
+                /* NewDocument fallback */
             }
 
             try

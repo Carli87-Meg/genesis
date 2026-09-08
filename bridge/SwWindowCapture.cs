@@ -8,6 +8,7 @@ namespace SolidWorksBridge;
 internal static class SwWindowCapture
 {
     private const int SwRestore = 9;
+    private const uint PwRenderFullContent = 2;
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -17,6 +18,9 @@ internal static class SwWindowCapture
 
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hWnd, out WinRect lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint nFlags);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct WinRect
@@ -41,8 +45,8 @@ internal static class SwWindowCapture
 
             var hwnd = proc.MainWindowHandle;
             ShowWindow(hwnd, SwRestore);
-            SetForegroundWindow(hwnd);
-            Thread.Sleep(400);
+            try { SetForegroundWindow(hwnd); } catch { /* coperto ok: PrintWindow */ }
+            Thread.Sleep(250);
             if (!GetWindowRect(hwnd, out var rect))
             {
                 detail = "GetWindowRect fallita";
@@ -63,7 +67,16 @@ internal static class SwWindowCapture
             using var bmp = new Bitmap(w, h);
             using (var g = Graphics.FromImage(bmp))
             {
-                g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(w, h));
+                var hdc = g.GetHdc();
+                try
+                {
+                    if (!PrintWindow(hwnd, hdc, PwRenderFullContent))
+                        g.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(w, h));
+                }
+                finally
+                {
+                    g.ReleaseHdc(hdc);
+                }
             }
 
             bmp.Save(dest, ImageFormat.Jpeg);

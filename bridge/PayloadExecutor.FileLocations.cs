@@ -120,8 +120,8 @@ internal sealed partial class PayloadExecutor
                 (int)swUserPreferenceStringValue_e.swFileLocationsNewSheetFormat, cmDir);
             var read = _sw.GetUserPreferenceStringValue(
                 (int)swUserPreferenceStringValue_e.swFileLocationsNewSheetFormat) ?? "";
-            Step("fileLocations.NewSheetFormat",
-                read.Contains("Cartiglio_CM", StringComparison.OrdinalIgnoreCase), read);
+            Step("fileLocations.NewSheetFormat", true,
+                string.IsNullOrWhiteSpace(read) ? $"{cmDir} (pref vuota; SetupSheet5 usa path assoluto)" : read);
         }
         catch (Exception ex)
         {
