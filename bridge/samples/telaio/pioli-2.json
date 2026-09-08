@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Pioli2",
+    "attachToActive": false,
+    "savePath": "CAD/Pioli2.SLDPRT",
+    "snapshotPath": "Export/Pioli2.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoPiolo",
+      "plane": "Front",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 160, "height": 40 },
+        { "kind": "circle", "cx": 0, "cy": 0, "diameter": 8 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "Estrusione",
+      "sketch": "s1",
+      "depth": 600,
+      "merge": true
+    }
+  ]
+}

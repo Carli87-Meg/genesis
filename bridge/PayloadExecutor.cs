@@ -145,6 +145,9 @@ internal sealed partial class PayloadExecutor
             Step("AttachToActive", false, "Nessun documento attivo");
         }
 
+        if (string.IsNullOrWhiteSpace(spec.OpenPath) && !string.IsNullOrWhiteSpace(spec.SavePath))
+            CloseForeignDocAtPath(spec.SavePath, keep: null);
+
         return kind switch
         {
             "assembly" or "assieme" => NewAssembly(swApp, spec.Name),
@@ -1178,7 +1181,10 @@ internal sealed partial class PayloadExecutor
         {
             LogComponentBoxes(assy);
             InspectMates(model, assy);
-            VerifyScalaModule(assy);
+            if (FindBox(assy, "LongheroneSx") is not null)
+                VerifyTelaioModule(assy);
+            else
+                VerifyScalaModule(assy);
             return;
         }
 
@@ -1426,6 +1432,33 @@ internal sealed partial class PayloadExecutor
         var ok = luce > 400 && Math.Abs(span - luce) < 8 && flush && yOverlap > 10 && holesX && rails;
         Step("verifyScala", ok,
             $"luce={luce:0.0} mm spanScalino={span:0.0} flush={flush} yOverlap={yOverlap:0.0} xS1={x1:0} xS2={x2:0} piede={piede is not null}");
+    }
+
+    private void VerifyTelaioModule(IAssemblyDoc assy)
+    {
+        var sx = FindBox(assy, "LongheroneSx");
+        var dx = FindBox(assy, "LongheroneDx");
+        var p1 = FindBox(assy, "Pioli1");
+        var p2 = FindBox(assy, "Pioli2");
+        var p3 = FindBox(assy, "Pioli3");
+        var fl = FindBox(assy, "Flangia");
+        if (sx is null || dx is null || p1 is null || p2 is null || p3 is null)
+        {
+            Step("verifyTelaio", false, "box mancanti");
+            return;
+        }
+
+        var sxZ1 = Math.Max(sx[4], sx[5]);
+        var dxZ0 = Math.Min(dx[4], dx[5]);
+        var luce = dxZ0 - sxZ1;
+        bool Flush(double[] b) =>
+            Math.Abs(Math.Min(b[4], b[5]) - sxZ1) < 5 && Math.Abs(Math.Max(b[4], b[5]) - dxZ0) < 5;
+        var xs = new[] { 0.5 * (p1[0] + p1[1]), 0.5 * (p2[0] + p2[1]), 0.5 * (p3[0] + p3[1]) };
+        Array.Sort(xs);
+        var pitch = Math.Abs(xs[1] - xs[0]) > 80 && Math.Abs(xs[2] - xs[1]) > 80;
+        var ok = luce > 400 && Flush(p1) && Flush(p2) && Flush(p3) && pitch && fl is not null;
+        Step("verifyTelaio", ok,
+            $"luce={luce:0.0} flush={Flush(p1)&&Flush(p2)&&Flush(p3)} x=[{xs[0]:0},{xs[1]:0},{xs[2]:0}] flangia={fl is not null}");
     }
 
     private bool SelectComponentPlanarFace(
@@ -2034,6 +2067,15 @@ internal sealed partial class PayloadExecutor
             catch { /* ignore */ }
         }
 
+        try
+        {
+            var sheet = drawing.GetCurrentSheet() as ISheet;
+            var sheetName = sheet?.GetName();
+            if (!string.IsNullOrWhiteSpace(sheetName))
+                drawing.ActivateSheet(sheetName);
+        }
+        catch { /* Foglio1 / Sheet1 */ }
+
         var includeIso = op.Flag("includeIso", true);
         try
         {
@@ -2041,9 +2083,12 @@ internal sealed partial class PayloadExecutor
             if (!ok) ok = drawing.Create3rdAngleViews2(modelPath);
             if (!ok)
             {
-                ok = drawing.CreateDrawViewFromModelView3(modelPath, "*Front", 0.12, 0.18, 0) is not null;
+                ok = drawing.CreateDrawViewFromModelView3(modelPath, "*Front", 0.12, 0.18, 0) is not null
+                     || drawing.CreateDrawViewFromModelView3(modelPath, "*Anteriore", 0.12, 0.18, 0) is not null;
                 drawing.CreateDrawViewFromModelView3(modelPath, "*Top", 0.12, 0.08, 0);
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Superiore", 0.12, 0.08, 0);
                 drawing.CreateDrawViewFromModelView3(modelPath, "*Right", 0.24, 0.18, 0);
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Destra", 0.24, 0.18, 0);
             }
 
             Step("Create1stAngleViews2", ok, Path.GetFileName(modelPath));
@@ -2053,10 +2098,10 @@ internal sealed partial class PayloadExecutor
             Step("Create1stAngleViews2", false, FormatEx(ex));
             try
             {
-                drawing.CreateDrawViewFromModelView3(modelPath, "*Front", 0.12, 0.18, 0);
-                drawing.CreateDrawViewFromModelView3(modelPath, "*Top", 0.12, 0.08, 0);
-                drawing.CreateDrawViewFromModelView3(modelPath, "*Right", 0.24, 0.18, 0);
-                Step("CreateDrawViewFromModelView", true, "fallback Front/Top/Right");
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Anteriore", 0.12, 0.18, 0);
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Superiore", 0.12, 0.08, 0);
+                drawing.CreateDrawViewFromModelView3(modelPath, "*Destra", 0.24, 0.18, 0);
+                Step("CreateDrawViewFromModelView", true, "fallback Anteriore/Superiore/Destra");
             }
             catch (Exception ex2)
             {
@@ -2066,20 +2111,161 @@ internal sealed partial class PayloadExecutor
 
         if (includeIso)
         {
-            try
+            InsertIsoDrawingView(drawing, model, modelPath);
+        }
+
+        LogDrawingViews(drawing);
+    }
+
+    /// <summary>
+    /// Vista iso da orientamento reale del modello (NameView / *Isometrica).
+    /// *Isometric inglese su template IT restituisce null.
+    /// </summary>
+    private void InsertIsoDrawingView(IDrawingDoc drawing, ModelDoc2 drawingModel, string modelPath)
+    {
+        var named = EnsureIsoNamedView(modelPath);
+        ActivateModel(drawingModel);
+        try
+        {
+            var sheet = drawing.GetCurrentSheet() as ISheet;
+            var sheetName = sheet?.GetName();
+            if (!string.IsNullOrWhiteSpace(sheetName))
+                drawing.ActivateSheet(sheetName);
+        }
+        catch { /* ignore */ }
+
+        IView? iso = null;
+        var used = "";
+        var names = new[] { named, "SWIA_Iso", "*Isometrica", "*Current", "*Isometric", "*Trimetrica", "*Isometrico" };
+        var locs = new (double X, double Y)[] { (0.355, 0.215), (0.30, 0.185), (0.28, 0.20), (0.33, 0.14) };
+        foreach (var (x, y) in locs)
+        {
+            foreach (var name in names)
             {
-                var iso = drawing.CreateDrawViewFromModelView3(modelPath, "*Isometric", 0.32, 0.10, 0);
-                if (iso is null)
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                try
                 {
-                    iso = drawing.CreateDrawViewFromModelView3(modelPath, "*Isometrica", 0.32, 0.10, 0);
+                    iso = drawing.CreateDrawViewFromModelView3(modelPath, name, x, y, 0) as IView;
                 }
-                Step("CreateDrawViewFromModelView", iso is not null, iso is not null ? "iso" : "*Isometric/*Isometrica");
-            }
-            catch (Exception ex)
-            {
-                Step("CreateDrawViewFromModelView", false, FormatEx(ex));
+                catch
+                {
+                    iso = null;
+                }
+
+                if (iso is not null)
+                {
+                    used = $"{name} @ {x:0.00},{y:0.00}";
+                    TuneIsoView(iso);
+                    goto IsoDone;
+                }
             }
         }
+
+        iso = TryDropIsoFromPalette(drawing, modelPath, 0.355, 0.215);
+        if (iso is not null)
+        {
+            used = "palette DropDrawingViewFromPalette2";
+            TuneIsoView(iso);
+        }
+
+        IsoDone:
+        Step("CreateDrawViewFromModelView", iso is not null, iso is not null ? $"iso {used}" : "iso assente");
+    }
+
+    private static void TuneIsoView(IView iso)
+    {
+        try { ((dynamic)iso).ScaleDecimal = 0.08; } catch { /* scala foglio */ }
+        try { ((dynamic)iso).Name = "Isometrica"; } catch { /* ignore */ }
+    }
+
+    private IView? TryDropIsoFromPalette(IDrawingDoc drawing, string modelPath, double x, double y)
+    {
+        try { drawing.GenerateViewPaletteViews(modelPath); }
+        catch { return null; }
+
+        foreach (var name in new[] { "Isometrica", "*Isometrica", "SWIA_Iso", "Isometric", "Trimetrica", "*Trimetrica" })
+        {
+            try
+            {
+                if (drawing.DropDrawingViewFromPalette2(name, x, y, 0) is IView v)
+                    return v;
+            }
+            catch { /* next name */ }
+        }
+
+        return null;
+    }
+
+    private string EnsureIsoNamedView(string modelPath)
+    {
+        const string named = "SWIA_Iso";
+        if (_sw is null) return "*Isometrica";
+        try
+        {
+            var oErr = 0;
+            var oWarn = 0;
+            var dtype = modelPath.EndsWith(".sldasm", StringComparison.OrdinalIgnoreCase)
+                ? (int)swDocumentTypes_e.swDocASSEMBLY
+                : (int)swDocumentTypes_e.swDocPART;
+            var mdl = _sw.OpenDoc6(modelPath, dtype, (int)swOpenDocOptions_e.swOpenDocOptions_Silent, "", ref oErr, ref oWarn) as ModelDoc2;
+            if (mdl is null) return "*Isometrica";
+            var aErr = 0;
+            try { _sw.ActivateDoc3(mdl.GetTitle(), false, 0, ref aErr); } catch { /* ignore */ }
+            ApplyStandardView(mdl, "*Isometric");
+            try { mdl.NameView(named); } catch { /* già esiste */ }
+            try { mdl.ViewZoomtofit2(); } catch { /* ignore */ }
+            try { Thread.Sleep(500); } catch { /* ignore */ }
+            Step("NameView", true, named);
+            return named;
+        }
+        catch (Exception ex)
+        {
+            Step("NameView", false, FormatEx(ex));
+            return "*Isometrica";
+        }
+    }
+
+    private void ActivateModel(ModelDoc2 model)
+    {
+        if (_sw is null) return;
+        try
+        {
+            var aErr = 0;
+            _sw.ActivateDoc3(model.GetTitle(), false, 0, ref aErr);
+        }
+        catch
+        {
+            try { _sw.ActivateDoc(model.GetTitle()); } catch { /* ignore */ }
+        }
+    }
+
+    private void LogDrawingViews(IDrawingDoc drawing)
+    {
+        var names = new List<string>();
+        try
+        {
+            var v = drawing.GetFirstView() as IView;
+            v = v?.GetNextView() as IView;
+            while (v is not null)
+            {
+                var n = "";
+                try { n = v.Name ?? ""; } catch { n = "?"; }
+                names.Add(n);
+                try { v = v.GetNextView() as IView; }
+                catch { break; }
+            }
+        }
+        catch (Exception ex)
+        {
+            Step("DrawingViews", false, FormatEx(ex));
+            return;
+        }
+
+        var hasIso = names.Exists(n =>
+            n.Contains("iso", StringComparison.OrdinalIgnoreCase)
+            || n.Contains("SWIA", StringComparison.OrdinalIgnoreCase)
+            || n.Contains("trime", StringComparison.OrdinalIgnoreCase));
+        Step("DrawingViews", names.Count >= 4 || hasIso, $"{names.Count} viste: {string.Join(", ", names)}");
     }
 
     private void DoModelDimensions(ModelDoc2 model, CadOperation op)
@@ -2136,10 +2322,10 @@ internal sealed partial class PayloadExecutor
         modelPath = Path.GetFullPath(modelPath);
         try
         {
-            var v = drawing.CreateDrawViewFromModelView3(modelPath, view, x, y, 0);
-            if (v is SolidWorks.Interop.sldworks.View dv && op.Num("scale", 0) > 0)
+            var v = drawing.CreateDrawViewFromModelView3(modelPath, view, x, y, 0) as IView;
+            if (v is not null && op.Num("scale", 0) > 0)
             {
-                try { dv.ScaleDecimal = op.Num("scale"); } catch { /* ignore */ }
+                try { ((dynamic)v).ScaleDecimal = op.Num("scale"); } catch { /* ignore */ }
             }
             Step("CreateDrawViewFromModelView", v is not null, $"{view} {Path.GetFileName(modelPath)}");
         }
@@ -2176,32 +2362,152 @@ internal sealed partial class PayloadExecutor
     private string? SaveIfRequested(ModelDoc2 model, DocumentSpec spec)
     {
         if (string.IsNullOrWhiteSpace(spec.SavePath)) return null;
-        try
-        {
-            var path = Path.GetFullPath(spec.SavePath);
-            var dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        var path = Path.GetFullPath(spec.SavePath);
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-            var errors = 0;
-            var warnings = 0;
-            var ok = model.SaveAs4(
-                path,
-                (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
-                (int)swSaveAsOptions_e.swSaveAsOptions_Silent,
-                ref errors,
-                ref warnings);
-            if (!ok)
+        ActivateModel(model);
+        try { Thread.Sleep(700); } catch { /* ignore */ }
+
+        string currentPath;
+        try { currentPath = model.GetPathName() ?? ""; }
+        catch { currentPath = ""; }
+
+        if (!string.IsNullOrWhiteSpace(currentPath)
+            && string.Equals(Path.GetFullPath(currentPath), path, StringComparison.OrdinalIgnoreCase))
+        {
+            return SaveInPlace(model, path);
+        }
+
+        CloseForeignDocAtPath(path, model);
+
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
             {
-                ok = model.SaveAs(path);
+                ActivateModel(model);
+                if (TrySaveAsOverwrite(model, path, out var errors, out var warnings)
+                    && File.Exists(path))
+                {
+                    Step("SaveAs", true, $"{path} errors={errors} warnings={warnings}");
+                    return path;
+                }
+
+                Step("SaveAs", false, $"{path} tentativo {attempt} errors={errors} warnings={warnings} exists={File.Exists(path)}");
+            }
+            catch (Exception ex)
+            {
+                var detail = FormatEx(ex);
+                Step("SaveAs", false, $"tentativo {attempt}: {detail}");
+                if (IsRpcDisconnected(detail))
+                {
+                    if (attempt == 3) throw;
+                    try { Thread.Sleep(1200 * attempt); } catch { /* ignore */ }
+                    try
+                    {
+                        if (_sw?.ActiveDoc is ModelDoc2 live) model = live;
+                    }
+                    catch { /* ignore */ }
+                    continue;
+                }
+
+                return null;
             }
 
-            Step("SaveAs", ok, $"{path} errors={errors} warnings={warnings}");
-            return ok ? path : null;
+            try { Thread.Sleep(800 * attempt); } catch { /* ignore */ }
+        }
+
+        return null;
+    }
+
+    private string? SaveInPlace(ModelDoc2 model, string path)
+    {
+        try
+        {
+            var errors = 0;
+            var warnings = 0;
+            var ok = model.Save3((int)swSaveAsOptions_e.swSaveAsOptions_Silent, ref errors, ref warnings);
+            var exists = File.Exists(path);
+            Step("Save3", ok && exists, $"{path} errors={errors} warnings={warnings} exists={exists}");
+            return ok && exists ? path : null;
         }
         catch (Exception ex)
         {
-            Step("SaveAs", false, FormatEx(ex));
+            var detail = FormatEx(ex);
+            Step("Save3", false, detail);
+            if (IsRpcDisconnected(detail)) throw;
             return null;
+        }
+    }
+
+    private static bool TrySaveAsOverwrite(ModelDoc2 model, string path, out int errors, out int warnings)
+    {
+        errors = 0;
+        warnings = 0;
+        var opts = (int)swSaveAsOptions_e.swSaveAsOptions_Silent;
+        try
+        {
+            var ext = (IModelDocExtension)model.Extension;
+            if (ext.SaveAs(path, (int)swSaveAsVersion_e.swSaveAsCurrentVersion, opts, null, ref errors, ref warnings))
+                return true;
+        }
+        catch
+        {
+            /* SaveAs4 */
+        }
+
+        errors = 0;
+        warnings = 0;
+        try
+        {
+            if (model.SaveAs4(
+                    path,
+                    (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
+                    opts,
+                    ref errors,
+                    ref warnings))
+            {
+                return true;
+            }
+        }
+        catch
+        {
+            /* SaveAs */
+        }
+
+        try { return model.SaveAs(path); }
+        catch { return false; }
+    }
+
+    private static bool IsRpcDisconnected(string detail) =>
+        detail.Contains("80010108", StringComparison.OrdinalIgnoreCase)
+        || detail.Contains("RPC_E_DISCONNECTED", StringComparison.OrdinalIgnoreCase);
+
+    private void CloseForeignDocAtPath(string path, ModelDoc2? keep)
+    {
+        if (_sw is null || string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            if (_sw.GetOpenDocumentByName(path) is not ModelDoc2 other) return;
+            string keepTitle = "";
+            try { keepTitle = keep?.GetTitle() ?? ""; } catch { /* ignore */ }
+            string otherTitle;
+            try { otherTitle = other.GetTitle(); }
+            catch { return; }
+
+            if (!string.IsNullOrWhiteSpace(keepTitle)
+                && otherTitle.Equals(keepTitle, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _sw.CloseDoc(otherTitle);
+            try { Thread.Sleep(500); } catch { /* ignore */ }
+            Step("CloseDoc", true, $"liberato {Path.GetFileName(path)}");
+        }
+        catch
+        {
+            /* destinazione non aperta */
         }
     }
 
@@ -2374,9 +2680,10 @@ internal sealed partial class PayloadExecutor
         try { title = model.GetTitle(); }
         catch { title = ""; }
 
-        if (type == (int)swDocumentTypes_e.swDocASSEMBLY)
+        if (type == (int)swDocumentTypes_e.swDocASSEMBLY
+            || type == (int)swDocumentTypes_e.swDocDRAWING)
         {
-            CloseIdleDocuments(swApp, keepAssemblies: true, keepTitle: title);
+            CloseIdleDocuments(swApp, keepAssemblies: type == (int)swDocumentTypes_e.swDocASSEMBLY, keepTitle: title);
             return;
         }
 
@@ -2414,7 +2721,9 @@ internal sealed partial class PayloadExecutor
                 continue;
             }
 
-            if (keepAssemblies && ty == (int)swDocumentTypes_e.swDocASSEMBLY)
+            // NewDrawing: tieni gli assiemi aperti, servono per le viste.
+            if (keepAssemblies && string.IsNullOrWhiteSpace(keepTitle)
+                && ty == (int)swDocumentTypes_e.swDocASSEMBLY)
             {
                 continue;
             }
@@ -2431,6 +2740,15 @@ internal sealed partial class PayloadExecutor
         }
 
         if (closed > 0) Step("CloseDoc", true, $"chiusi {closed} documenti extra");
+        if (!string.IsNullOrWhiteSpace(keepTitle))
+        {
+            try
+            {
+                var aErr = 0;
+                swApp.ActivateDoc3(keepTitle, false, 0, ref aErr);
+            }
+            catch { /* ignore */ }
+        }
     }
 
     private void ApplyStandardView(ModelDoc2 model, string named)

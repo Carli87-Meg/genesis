@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "LongheroneSx",
+    "attachToActive": false,
+    "savePath": "CAD/LongheroneSx.SLDPRT",
+    "snapshotPath": "Export/LongheroneSx.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoLongherone",
+      "plane": "Front",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 700, "height": 40 },
+        { "kind": "circle", "cx": -250, "cy": 0, "diameter": 8 },
+        { "kind": "circle", "cx": 0, "cy": 0, "diameter": 8 },
+        { "kind": "circle", "cx": 250, "cy": 0, "diameter": 8 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "Estrusione",
+      "sketch": "s1",
+      "depth": 8,
+      "merge": true
+    }
+  ]
+}

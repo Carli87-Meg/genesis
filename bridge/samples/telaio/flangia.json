@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Flangia",
+    "attachToActive": false,
+    "savePath": "CAD/Flangia.SLDPRT",
+    "snapshotPath": "Export/Flangia.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoPiastra",
+      "plane": "Top",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 50, "height": 40 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "EstrusionePiastra",
+      "sketch": "s1",
+      "depth": 5,
+      "merge": true
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "name": "SchizzoFori",
+      "plane": "Top",
+      "contours": [
+        { "kind": "circle", "cx": 12, "cy": 0, "diameter": 6.5 },
+        { "kind": "circle", "cx": -12, "cy": 0, "diameter": 6.5 }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "name": "TaglioFori",
+      "sketch": "s2",
+      "throughAll": true
+    }
+  ]
+}

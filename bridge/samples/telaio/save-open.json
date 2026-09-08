@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "LongheroneSx",
+    "attachToActive": false,
+    "openPath": "CAD/LongheroneSx.SLDPRT",
+    "savePath": "CAD/LongheroneSx.SLDPRT",
+    "snapshotPath": "Export/LongheroneSx-resave.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": []
+}

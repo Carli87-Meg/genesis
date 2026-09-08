@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "PiedeSx",
+    "attachToActive": false,
+    "savePath": "CAD/PiedeSx.SLDPRT",
+    "snapshotPath": "Export/PiedeSx.jpg"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "name": "SchizzoPiede",
+      "plane": "Top",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 70, "height": 70 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "name": "Estrusione",
+      "sketch": "s1",
+      "depth": 8,
+      "merge": true
+    }
+  ]
+}

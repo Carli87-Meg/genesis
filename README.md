@@ -22,10 +22,10 @@ Oppure in due terminali:
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\lucehost.dll
+dotnet bridge\bin\Release\net8.0-windows\cmisohost.dll
 ```
 
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `lucehost.dll`; `dotnet …\lucehost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `cmisohost.dll`; `dotnet …\cmisohost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
 
 ```powershell
 copy .env.example .env.local
@@ -55,6 +55,22 @@ curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\assieme.json"
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\tavola.json"
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\tavola-piastra.json"
+```
+
+Telaio (8 parti, mate facce, tavola A3 Cartiglio_CM con vista isometrica extra). Pausa 4–5 s tra un `execute` e il successivo:
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\longherone-sx.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\longherone-dx.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\pioli-1.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\pioli-2.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\pioli-3.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\piede-sx.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\piede-dx.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\flangia.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\save-open.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\assieme.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\telaio\tavola.json"
 ```
 
 I file CAD del bridge finiscono in

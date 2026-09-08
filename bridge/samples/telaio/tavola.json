@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaTelaio",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaTelaio.SLDDRW",
+    "snapshotPath": "Export/TavolaTelaio.jpg",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "sf1",
+      "type": "sheetFormat",
+      "format": "A3"
+    },
+    {
+      "id": "v1",
+      "type": "standardViews",
+      "name": "VisteStandard",
+      "model": "CAD/AssiemeTelaio.SLDASM",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "d1",
+      "type": "modelDimensions",
+      "name": "Quote"
+    },
+    {
+      "id": "n1",
+      "type": "annotation",
+      "name": "Cartiglio",
+      "text": "Telaio — longheroni 700×40×8, 3 pioli Ø8 luce 600, flangia 50×40×5, Cartiglio_CM A3",
+      "x": 0.02,
+      "y": 0.01
+    }
+  ]
+}
