@@ -145,6 +145,28 @@
       "entity2": "xmax"
     },
     {
+      "id": "m9",
+      "type": "mate",
+      "name": "ConcS2Dx",
+      "mateType": "concentric",
+      "component1": "cS2",
+      "component2": "cDx",
+      "entity1": "inner",
+      "entity2": "inner",
+      "diameter": 8,
+      "holeX": 220
+    },
+    {
+      "id": "m10",
+      "type": "mate",
+      "name": "LuceS2Dx",
+      "mateType": "coincident",
+      "component1": "cS2",
+      "component2": "cDx",
+      "entity1": "zmax",
+      "entity2": "zmin"
+    },
+    {
       "id": "mP1",
       "type": "mate",
       "name": "PiedeY",

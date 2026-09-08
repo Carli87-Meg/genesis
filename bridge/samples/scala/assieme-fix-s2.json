@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemeScala",
+    "attachToActive": true,
+    "openPath": "CAD/AssiemeScala.SLDASM",
+    "savePath": "CAD/AssiemeScala.SLDASM",
+    "snapshotPath": "Export/AssiemeScala.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "m9",
+      "type": "mate",
+      "name": "ConcS2Dx",
+      "mateType": "concentric",
+      "component1": "Scalino2",
+      "component2": "FiancataDx",
+      "entity1": "inner",
+      "entity2": "inner",
+      "diameter": 8,
+      "holeX": 220
+    },
+    {
+      "id": "m10",
+      "type": "mate",
+      "name": "LuceS2Dx",
+      "mateType": "coincident",
+      "component1": "Scalino2",
+      "component2": "FiancataDx",
+      "entity1": "zmax",
+      "entity2": "zmin"
+    },
+    { "id": "v1", "type": "inspect" },
+    { "id": "v2", "type": "verify" }
+  ]
+}

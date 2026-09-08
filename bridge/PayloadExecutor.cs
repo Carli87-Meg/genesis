@@ -1413,11 +1413,14 @@ internal sealed partial class PayloadExecutor
         var luce = inner1 - inner0;
         var s1Z0 = Math.Min(s1[4], s1[5]);
         var s1Z1 = Math.Max(s1[4], s1[5]);
+        var s2Z0 = Math.Min(s2[4], s2[5]);
+        var s2Z1 = Math.Max(s2[4], s2[5]);
         var span = s1Z1 - s1Z0;
         var x1 = 0.5 * (s1[0] + s1[1]);
         var x2 = 0.5 * (s2[0] + s2[1]);
         var yOverlap = Math.Min(s1[3], sx[3]) - Math.Max(s1[2], sx[2]);
-        var flush = Math.Abs(s1Z0 - inner0) < 4 && Math.Abs(s1Z1 - inner1) < 4;
+        var flush = Math.Abs(s1Z0 - inner0) < 4 && Math.Abs(s1Z1 - inner1) < 4
+                    && Math.Abs(s2Z0 - inner0) < 4 && Math.Abs(s2Z1 - inner1) < 4;
         var holesX = Math.Abs(Math.Abs(x1) - 220) < 15 && Math.Abs(Math.Abs(x2) - 220) < 15 && x1 * x2 < 0;
         var rails = Math.Abs((sx[1] - sx[0]) - 600) < 5 && Math.Abs((sx[3] - sx[2]) - 40) < 5;
         var ok = luce > 400 && Math.Abs(span - luce) < 8 && flush && yOverlap > 10 && holesX && rails;
