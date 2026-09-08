@@ -34,6 +34,7 @@ import {
   type SolidWorksDocumentPayload,
   type TreeOp,
 } from "@/lib/payload"
+import { DEFAULT_OPENROUTER_MODEL, OPENROUTER_MODEL_OPTIONS } from "@/lib/openrouter-models"
 
 const EXAMPLES = [
   "Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM",
@@ -52,7 +53,7 @@ type Settings = {
 
 const DEFAULT_SETTINGS: Settings = {
   openRouterKey: "",
-  model: "openai/gpt-4o-mini",
+  model: DEFAULT_OPENROUTER_MODEL,
   bridgeUrl: DEFAULT_BRIDGE_URL,
 }
 
@@ -594,6 +595,8 @@ export function StudioApp() {
               La chiave OpenRouter resta nel browser (localStorage) e una copia locale
               serve solo a questo PC (mai git). Senza chiave: demo. Con chiave rifiutata
               da OpenRouter non parte la demo, così non nasce il pezzo sbagliato.
+              Modelli: consigliato / veloce / qualità / economico — dettagli nel README
+              (sezione OpenRouter) e nella nota CADTM sui modelli.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -625,9 +628,14 @@ export function StudioApp() {
                 value={draft.model}
                 onChange={(e) => setDraft((s) => ({ ...s, model: e.target.value }))}
               >
-                <option value="openai/gpt-4o-mini">GPT-4o mini</option>
-                <option value="openai/gpt-4o">GPT-4o</option>
-                <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+                {OPENROUTER_MODEL_OPTIONS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+                {!OPENROUTER_MODEL_OPTIONS.some((m) => m.id === draft.model) && draft.model ? (
+                  <option value={draft.model}>{draft.model} (salvato)</option>
+                ) : null}
               </select>
             </div>
             <div className="space-y-1">

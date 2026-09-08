@@ -131,19 +131,15 @@ export function interpretFromLlmText(
   const payloadOpsRaw = payloadRec && Array.isArray(payloadRec.operations) ? payloadRec.operations : []
   const payloadOps = payloadOpsRaw.length || -1
   const rawTypes = payloadOpsRaw.map((o) => {
-    const r = asRecord(o)
-    return r ? String(r.type ?? r.kind ?? r.op ?? r.operation ?? r.feature ?? "") : typeof o
+    const r = unwrapKeyedOp(o)
+    return r ? String(r.type ?? r.kind ?? "") : typeof o
   })
   const rawKeys = payloadOpsRaw.slice(0, 3).map((o) => {
     const r = asRecord(o)
     return r ? Object.keys(r).join("+") : typeof o
   })
 
-  let payloadPair =
-    (job && job[0]) ||
-    coerceDocument(root.payload) ||
-    coerceDocument(root) ||
-    null
+  const payloadPair = coerceDocument(root.payload) || coerceDocument(root) || job?.[0] || null
 
   if (!payloadPair || payloadPair.doc.operations.length === 0) {
     const jobLen = Array.isArray(root.job) ? root.job.length : 0
@@ -154,16 +150,25 @@ export function interpretFromLlmText(
   }
 
   const droppedOps = (job ?? [payloadPair]).reduce((n, p) => n + p.dropped, 0)
+  let jobDocs = job && job.length > 0 ? job.map((j) => j.doc) : undefined
+  if (jobDocs && jobDocs.length > 0) {
+    const already = jobDocs.some(
+      (d) => d.document.name === payloadPair.doc.document.name && d.document.type === payloadPair.doc.document.type,
+    )
+    if (!already && payloadPair.doc.operations.length > 0) {
+      jobDocs = [payloadPair.doc, ...jobDocs]
+    }
+  }
   const payload = payloadPair.doc
-  const jobDocs = job && job.length > 1 ? job.map((j) => j.doc) : undefined
+  const jobOut = jobDocs && jobDocs.length > 1 ? jobDocs : undefined
 
   return {
     result: {
       summary: summary || `Modello con ${payload.operations.length} operazioni.`,
       source: "openrouter",
-      operations: jobDocs ? jobDocs.flatMap((d) => d.operations) : payload.operations,
+      operations: jobOut ? jobOut.flatMap((d) => d.operations) : payload.operations,
       payload,
-      job: jobDocs,
+      job: jobOut,
       dfm: runDfm(payload),
       model,
     },
@@ -174,12 +179,21 @@ export function interpretFromLlmText(
   }
 }
 
+function operationsFrom(rec: Record<string, unknown>): unknown[] | null {
+  if (Array.isArray(rec.operations)) return rec.operations
+  const nested = asRecord(rec.payload)
+  if (nested && Array.isArray(nested.operations)) return nested.operations
+  if (Array.isArray(rec.ops)) return rec.ops
+  if (Array.isArray(rec.features)) return rec.features
+  return null
+}
+
 function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped: number } | null {
   const rec = asRecord(raw)
   if (!rec) return null
 
-  const opsRaw = rec.operations
-  if (!Array.isArray(opsRaw)) return null
+  const opsRaw = operationsFrom(rec)
+  if (!opsRaw) return null
 
   const operations: CadOperation[] = []
   let dropped = 0
@@ -221,8 +235,29 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   return { doc, dropped }
 }
 
-function normalizeOp(raw: unknown, index: number): CadOperation | null {
+function unwrapKeyedOp(raw: unknown): Record<string, unknown> | null {
   const rec = asRecord(raw)
+  if (!rec) return null
+
+  const explicit = String(rec.type ?? rec.kind ?? rec.op ?? rec.operation ?? rec.feature ?? "").trim()
+  if (explicit) {
+    const nested = asRecord(rec[explicit]) || asRecord(rec.params) || asRecord(rec.data)
+    return nested ? { ...nested, ...rec, type: explicit } : rec
+  }
+
+  for (const k of Object.keys(rec)) {
+    const aliased = TYPE_ALIAS[k.toLowerCase()] || k
+    if (!OP_TYPES.has(aliased)) continue
+    const inner = rec[k]
+    const innerRec = asRecord(inner)
+    if (innerRec) return { ...rec, ...innerRec, type: aliased }
+    return { ...rec, type: aliased }
+  }
+  return rec
+}
+
+function normalizeOp(raw: unknown, index: number): CadOperation | null {
+  const rec = unwrapKeyedOp(raw)
   if (!rec) return null
   const rawType = String(rec.type ?? rec.kind ?? rec.op ?? rec.operation ?? rec.feature ?? "").trim()
   const aliased = TYPE_ALIAS[rawType.toLowerCase()] || rawType || inferOpType(rec)
@@ -255,22 +290,61 @@ function normalizeContour(raw: unknown): unknown {
   if (!rec) return null
   const kind = String(rec.kind ?? rec.type ?? "").toLowerCase()
   const pos = asRecord(rec.position)
-  const cx = numish(rec.cx) ?? numish(pos?.x) ?? numish(rec.x) ?? 0
-  const cy = numish(rec.cy) ?? numish(pos?.y) ?? numish(rec.y) ?? 0
+  // LLM spesso manda cx:0 insieme a centerX reale: non trattare 0 come già risolto.
+  const cx = pickAxis(rec, pos, ["cx", "x", "centerX", "centreX"])
+  const cy = pickAxis(rec, pos, ["cy", "y", "centerY", "centreY"])
+  const rest = omitKeys(rec, [
+    "centerX",
+    "centerY",
+    "centreX",
+    "centreY",
+    "position",
+  ])
   if (kind === "rect" || kind === "rectangle") {
     const width = numish(rec.width) ?? 0
     const height = numish(rec.height) ?? 0
-    return { ...rec, kind: "rectangle", cx, cy, width, height }
+    return { ...rest, kind: "rectangle", cx, cy, width, height }
   }
   if (kind === "circ" || kind === "circle" || kind === "arc") {
     const diameter = numish(rec.diameter) ?? (numish(rec.radius) != null ? numish(rec.radius)! * 2 : 0)
-    return { ...rec, kind: "circle", cx, cy, diameter }
+    return { ...rest, kind: "circle", cx, cy, diameter }
   }
-  if (kind === "line" || kind === "linea") return { ...rec, kind: "line" }
+  if (kind === "line" || kind === "linea") return { ...rest, kind: "line" }
   if (rec.kind === "rectangle" || rec.kind === "circle" || rec.kind === "line") {
-    return { ...rec, cx: numish((rec as { cx?: unknown }).cx) ?? cx, cy: numish((rec as { cy?: unknown }).cy) ?? cy }
+    return { ...rest, kind: rec.kind, cx, cy }
   }
   return null
+}
+
+function pickAxis(
+  rec: Record<string, unknown>,
+  pos: Record<string, unknown> | null,
+  keys: string[],
+): number {
+  const vals: number[] = []
+  const primary = presentNum(rec, keys[0])
+  if (primary !== undefined) vals.push(primary)
+  const posKey = keys[0] === "cx" ? "x" : keys[0] === "cy" ? "y" : null
+  if (posKey) {
+    const fromPos = presentNum(pos, posKey)
+    if (fromPos !== undefined) vals.push(fromPos)
+  }
+  for (const key of keys.slice(1)) {
+    const n = presentNum(rec, key)
+    if (n !== undefined) vals.push(n)
+  }
+  if (vals.length === 0) return 0
+  const nonzero = vals.find((v) => Math.abs(v) > 1e-9)
+  return nonzero ?? vals[0]
+}
+
+function omitKeys(rec: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  const skip = new Set(keys)
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(rec)) {
+    if (!skip.has(k)) out[k] = v
+  }
+  return out
 }
 
 function linkSketches(ops: CadOperation[]) {
@@ -312,6 +386,11 @@ function recenterCornerOrigin(ops: CadOperation[]) {
       c.cy -= rect.height / 2
     }
   }
+}
+
+function presentNum(rec: Record<string, unknown> | null, key: string): number | undefined {
+  if (!rec || !(key in rec)) return undefined
+  return numish(rec[key])
 }
 
 function numish(v: unknown): number | undefined {

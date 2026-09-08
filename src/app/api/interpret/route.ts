@@ -1,5 +1,6 @@
 import { interpretDemo } from "@/lib/demo-interpreter"
 import { interpretFromLlmText } from "@/lib/llm-payload"
+import { DEFAULT_OPENROUTER_MODEL } from "@/lib/openrouter-models"
 import { redactSecrets, resolveOpenRouterKey } from "@/lib/or-key"
 import { runDfm } from "@/lib/dfm"
 import type { InterpretResult, SolidWorksDocumentPayload } from "@/lib/payload"
@@ -23,6 +24,7 @@ Forma:
   "job": [ payloadParte, payloadBoccola, payloadAssieme, payloadTavola ]
 }
 schemaVersion deve essere il numero 2 (non stringa). Includi sempre operations (array, anche di un solo documento).
+Ogni operazione è un oggetto con campo "type" (sketch|extrude|cut|...), mai { "sketch": { ... } } come unica chiave.
 Se il prompt è un pezzo unico, ometti "job" e metti tutto in payload.
 Operazioni ammesse: sketch (plane Front|Top|Right, contours rectangle|circle|line),
 extrude (depth mm, merge), cut (throughAll true per fori passanti), revolve, hole, fillet, chamfer, shell,
@@ -74,7 +76,7 @@ export async function POST(req: Request) {
     (req.headers.get("x-openrouter-model")?.trim() ||
       body.model?.trim() ||
       process.env.OPENROUTER_MODEL ||
-      "openai/gpt-4o-mini").trim()
+      DEFAULT_OPENROUTER_MODEL).trim()
 
   if (!key) {
     const demo = interpretDemo(prompt)
