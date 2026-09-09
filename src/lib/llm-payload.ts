@@ -207,6 +207,7 @@ export function interpretFromLlmText(
   if (jobOut) fixWindowCoverAssembly(jobOut)
   if (jobOut) fixPatternBushingAssembly(jobOut)
   if (jobOut) fixHingeAssembly(jobOut)
+  if (jobOut) fixChamferShaftAssembly(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -2458,6 +2459,205 @@ function fixHingeAssembly(jobOut: SolidWorksDocumentPayload[]): void {
 
   jobOut.length = 0
   jobOut.push(ear, pin, asm, ...drawings)
+}
+
+function chamferedShaftOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 16 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 80 },
+    { id: "ch1", type: "chamfer", distance: 1, allEdges: true },
+  ]
+}
+
+function passThroughPlateOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 50, height: 40 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 6 },
+    { id: "s2", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 16 }] },
+    { id: "c1", type: "cut", sketch: "s2", throughAll: true },
+  ]
+}
+
+function isGolaLikeShaft(ops: CadOperation[]): boolean {
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const o of ops) {
+    if (o.type !== "sketch") continue
+    for (const c of o.contours) {
+      if (c.kind !== "line" || c.construction) continue
+      xs.push(Math.abs(Number(c.x1)), Math.abs(Number(c.x2)))
+      ys.push(Number(c.y1), Number(c.y2))
+    }
+  }
+  if (!xs.length || !ys.length) return false
+  const ySpan = Math.max(...ys) - Math.min(...ys)
+  const has16 = xs.some((x) => Math.abs(x - 8) < 0.4)
+  const has12 = xs.some((x) => Math.abs(x - 6) < 0.4)
+  return ops.some((o) => o.type === "revolve") && has16 && has12 && ySpan >= 54 && ySpan <= 66
+}
+
+function isViteLikeShaft(ops: CadOperation[]): boolean {
+  if (ops.some((o) => /vite/i.test(o.id))) return true
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const o of ops) {
+    if (o.type !== "sketch") continue
+    for (const c of o.contours) {
+      if (c.kind !== "line" || c.construction) continue
+      xs.push(Math.abs(Number(c.x1)), Math.abs(Number(c.x2)))
+      ys.push(Number(c.y1), Number(c.y2))
+    }
+  }
+  if (!xs.length || !ys.length) return false
+  const ySpan = Math.max(...ys) - Math.min(...ys)
+  const maxR = Math.max(...xs)
+  return ops.some((o) => o.type === "revolve") && ySpan <= 25 && maxR <= 6.5
+}
+
+function isPassThroughPlate5040(ops: CadOperation[]): boolean {
+  if (!hasRectSizeOps(ops, 50, 40)) return false
+  const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
+  return ext6 && hasCircleDia(ops, 16)
+}
+
+function isChamferShaftJob(docs: SolidWorksDocumentPayload[]): boolean {
+  const parts = docs.filter((d) => d.document.type === "part")
+  if (parts.length === 0) return false
+  const names = parts.map((p) => p.document.name).join(" ")
+  if (/Albero16x80|PiastraForo16x50|AssiemeAlbero16Piastra/i.test(names)) return true
+  const plate = parts.find((p) => isPassThroughPlate5040(p.operations))
+  if (!plate) return false
+  const other = parts.find((p) => p !== plate)
+  if (!other || isGolaLikeShaft(other.operations)) return false
+  const ext80 = other.operations.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 80) < 1.2)
+  const ch = other.operations.some((o) => o.type === "chamfer")
+  const d16 = hasCircleDia(other.operations, 16)
+  return isViteLikeShaft(other.operations) || (ext80 && d16) || (ch && d16) || ext80
+}
+
+function fixChamferShaftAssembly(jobOut: SolidWorksDocumentPayload[]): void {
+  if (!isChamferShaftJob(jobOut)) return
+  if (isStackedColumnJob(jobOut) || isWindowCoverJob(jobOut) || isPatternBushingJob(jobOut) || isHingeJob(jobOut)) return
+
+  const parts = jobOut.filter((d) => d.document.type === "part")
+  let plate = parts.find((p) => isPassThroughPlate5040(p.operations) || hasRectSizeOps(p.operations, 50, 40))
+  let shaft = parts.find((p) => p !== plate)
+  const shaftName = shaft?.document.name && !/Piastra|Lastra/i.test(shaft.document.name) ? shaft.document.name : "Albero16x80"
+  const plateName = plate?.document.name && /Piastra|Lastra/i.test(plate.document.name) ? plate.document.name : "PiastraForo16x50"
+  if (!plate) plate = makePartDoc(plateName, passThroughPlateOps())
+  else {
+    plate.document.name = plateName
+    plate.document.savePath = `CAD/${plateName}.SLDPRT`
+    plate.document.snapshotPath = `Export/${plateName}.jpg`
+    plate.operations.length = 0
+    plate.operations.push(...passThroughPlateOps())
+  }
+  if (!shaft) shaft = makePartDoc(shaftName, chamferedShaftOps())
+  else {
+    shaft.document.name = shaftName
+    shaft.document.savePath = `CAD/${shaftName}.SLDPRT`
+    shaft.document.snapshotPath = `Export/${shaftName}.jpg`
+    shaft.operations.length = 0
+    shaft.operations.push(...chamferedShaftOps())
+  }
+
+  let asm = jobOut.find((d) => d.document.type === "assembly")
+  const asmName = asm?.document.name && /^Assieme/i.test(asm.document.name) ? asm.document.name : "AssiemeAlbero16Piastra"
+  if (!asm) {
+    asm = {
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "assembly",
+        name: asmName,
+        attachToActive: false,
+        savePath: `CAD/${asmName}.SLDASM`,
+        snapshotPath: `Export/${asmName}.jpg`,
+        snapshotView: "*Isometric",
+      },
+      variables: [],
+      configurations: [],
+      operations: [],
+    }
+  } else {
+    asm.document.name = asmName
+    asm.document.savePath = `CAD/${asmName}.SLDASM`
+  }
+  asm.operations = [
+    { id: "comp-pl", type: "component", path: `CAD/${plateName}.SLDPRT`, x: 0, y: 0, z: 0, fix: true },
+    { id: "comp-sh", type: "component", path: `CAD/${shaftName}.SLDPRT`, x: 0, y: 37, z: 0 },
+    {
+      id: "m-coin",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-sh",
+      component2: "comp-pl",
+      entity1: "bottom",
+      entity2: "bottom",
+    },
+    {
+      id: "m-conc",
+      type: "mate",
+      mateType: "concentric",
+      component1: "comp-sh",
+      component2: "comp-pl",
+      entity1: "outer",
+      entity2: "inner",
+      diameter: 16,
+    },
+    { id: "v-auto", type: "verify" },
+  ]
+
+  const drawings = jobOut.filter((d) => d.document.type === "drawing")
+  for (const d of drawings) {
+    if (!/^Tavola/i.test(d.document.name) || /Assemie/i.test(d.document.name)) {
+      d.document.name = "TavolaAlbero16Piastra"
+    }
+    d.document.savePath = `Disegni/${d.document.name}.SLDDRW`
+    d.document.sheetFormat = d.document.sheetFormat || "A3"
+    for (const op of d.operations) {
+      if (op.type === "standardViews" || op.type === "drawingView") {
+        const rec = op as { model?: string }
+        rec.model = `CAD/${asmName}.SLDASM`
+      }
+    }
+  }
+  if (drawings.length === 0) {
+    drawings.push({
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "drawing",
+        name: "TavolaAlbero16Piastra",
+        attachToActive: false,
+        savePath: "Disegni/TavolaAlbero16Piastra.SLDDRW",
+        snapshotPath: "Export/TavolaAlbero16Piastra.jpg",
+        sheetFormat: "A3",
+      },
+      variables: [],
+      configurations: [],
+      operations: [
+        {
+          id: "dv1",
+          type: "standardViews",
+          model: `CAD/${asmName}.SLDASM`,
+          firstAngle: true,
+          includeIso: true,
+        },
+        { id: "dd1", type: "modelDimensions" },
+        {
+          id: "an1",
+          type: "annotation",
+          text: "Albero Ø16×80 smusso 1×45° estremi — piastra 50×40×6 foro Ø16",
+          x: 0.02,
+          y: 0.27,
+        },
+      ],
+    })
+  }
+
+  jobOut.length = 0
+  jobOut.push(shaft, plate, asm, ...drawings)
 }
 
 const Z_BRACKET_POLY: Array<[number, number]> = [
