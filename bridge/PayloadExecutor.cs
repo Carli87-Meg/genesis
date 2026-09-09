@@ -10,6 +10,7 @@ internal sealed partial class PayloadExecutor
 {
     private readonly List<ExecStep> _steps = [];
     private readonly Dictionary<string, string> _created = new(StringComparer.OrdinalIgnoreCase);
+    private List<CadOperation> _ops = [];
     private ISldWorks? _sw;
     private string? _sketchStillPath;
     private bool _quotedStillSaved;
@@ -20,6 +21,7 @@ internal sealed partial class PayloadExecutor
     {
         _steps.Clear();
         _created.Clear();
+        _ops = payload.Operations;
         _sw = swApp;
         _quotedStillSaved = false;
         _sketchStillIndex = 0;
@@ -1603,8 +1605,9 @@ internal sealed partial class PayloadExecutor
     }
 
     /// <summary>
-    /// Assieme generico: ≥2 componenti, mate concentrici, coassialità (~3 mm su 2 assi).
-    /// Non dipende dai nomi dei kit staffa/scala/telaio/piastra-perno.
+    /// Assieme generico: ≥2 componenti. Se il payload chiede concentric, resta
+    /// concentric≥1 e (coaxial|seated). Se chiede solo coincident (cubo/cilindro
+    /// sulla piastra, staffa a due piastre), coincident≥1 e seated basta.
     /// </summary>
     private void VerifyGenericAssembly(ModelDoc2 model, IAssemblyDoc assy)
     {
@@ -1653,10 +1656,45 @@ internal sealed partial class PayloadExecutor
             }
         }
 
-        // Boccola centrale: 2 assi coincidono. Perno in foro decentrato: 1 asse + facce a contatto.
-        var ok = concentric >= 1 && (coaxial || seated);
+        var wantConcentric = PayloadRequestsMateKind("concentric");
+        var wantCoincident = PayloadRequestsMateKind("coincident");
+        var concentricOk = concentric >= 1 && (coaxial || seated);
+        var coincidentOk = coincident >= 1 && seated;
+        string rule;
+        bool ok;
+        if (wantConcentric)
+        {
+            // Perno/boccola: concentric richiesto dal job. Coincident faccia è extra.
+            ok = concentricOk;
+            rule = "concentric";
+        }
+        else if (wantCoincident)
+        {
+            ok = coincidentOk;
+            rule = "coincident+seated";
+        }
+        else
+        {
+            ok = concentricOk || coincidentOk;
+            rule = "either";
+        }
+
         Step("verify", ok,
-            $"n={items.Count} concentric={concentric} coincident={coincident} coaxial={coaxial} seated={seated} {pairInfo}");
+            $"n={items.Count} concentric={concentric} coincident={coincident} coaxial={coaxial} seated={seated} rule={rule} {pairInfo}");
+    }
+
+    private bool PayloadRequestsMateKind(string kind)
+    {
+        foreach (var op in _ops)
+        {
+            if (!string.Equals(op.Type, "mate", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var mt = op.Str("mateType", op.Str("subtype", op.Str("kind"))).Trim().ToLowerInvariant();
+            if (mt == kind)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool FacesTouch(double[] a, double[] b)

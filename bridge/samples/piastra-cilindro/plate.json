@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Piastra80x50",
+    "attachToActive": false,
+    "savePath": "CAD/Piastra80x50.SLDPRT",
+    "snapshotPath": "Export/Piastra80x50.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 80,
+          "height": 50
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "rectangle-width",
+          "value": 80
+        },
+        {
+          "entity": "rectangle-height",
+          "value": 50
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketch": "s1",
+      "depth": 6,
+      "merge": false
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "circle",
+          "cx": -30,
+          "cy": -17.5,
+          "diameter": 5
+        },
+        {
+          "kind": "circle",
+          "cx": 30,
+          "cy": -17.5,
+          "diameter": 5
+        },
+        {
+          "kind": "circle",
+          "cx": -30,
+          "cy": 17.5,
+          "diameter": 5
+        },
+        {
+          "kind": "circle",
+          "cx": 30,
+          "cy": 17.5,
+          "diameter": 5
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "circle-0-diameter",
+          "value": 5
+        },
+        {
+          "entity": "circle-1-diameter",
+          "value": 5
+        },
+        {
+          "entity": "circle-2-diameter",
+          "value": 5
+        },
+        {
+          "entity": "circle-3-diameter",
+          "value": 5
+        },
+        {
+          "entity": "circle-0-cx",
+          "value": -30
+        },
+        {
+          "entity": "circle-0-cy",
+          "value": -17.5
+        },
+        {
+          "entity": "circle-1-cx",
+          "value": 30
+        },
+        {
+          "entity": "circle-1-cy",
+          "value": -17.5
+        },
+        {
+          "entity": "circle-2-cx",
+          "value": -30
+        },
+        {
+          "entity": "circle-2-cy",
+          "value": 17.5
+        },
+        {
+          "entity": "circle-3-cx",
+          "value": 30
+        },
+        {
+          "entity": "circle-3-cy",
+          "value": 17.5
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketch": "s2",
+      "throughAll": true
+    }
+  ]
+}

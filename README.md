@@ -22,10 +22,10 @@ Oppure in due terminali:
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\swiax7k2.dll
+dotnet bridge\bin\Release\net8.0-windows\swiax9p4.dll
 ```
 
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `swiax7k2.dll`; `dotnet …\swiax7k2.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `swiax9p4.dll`; `dotnet …\swiax9p4.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
 
 Prima di ogni tavola, snapshot 3D e `CloseDoc` il bridge esce da «Modifica schizzo» (`InsertSketch(false)` solo se lo schizzo è aperto) e fa `EditRebuild3` + `ForceRebuild3`.
 
@@ -118,6 +118,21 @@ curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\verticale.json"
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\assieme.json"
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\tavola.json"
+```
+
+Piastra 80×50×6 + cilindro Ø20 h30. Percorso chat UI (Proponi + Esegui):
+
+```powershell
+node scripts\chat-cilindro-piastra-ui.mjs
+```
+
+Replay (pausa 5 s):
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cilindro\plate.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cilindro\cylinder.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cilindro\assieme.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cilindro\tavola.json"
 ```
 
 Piastra 100×60×8 + cubo 20 mm. Percorso chat UI (Proponi + Esegui, non solo curl interpret):

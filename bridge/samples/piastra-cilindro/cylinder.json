@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Cilindro20x30",
+    "attachToActive": false,
+    "savePath": "CAD/Cilindro20x30.SLDPRT",
+    "snapshotPath": "Export/Cilindro20x30.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s3",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "circle",
+          "cx": 0,
+          "cy": 0,
+          "diameter": 20
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "circle-0-diameter",
+          "value": 20
+        }
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "extrude",
+      "sketch": "s3",
+      "depth": 30,
+      "merge": false
+    }
+  ]
+}

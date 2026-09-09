@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssemblePiastraCilindro",
+    "attachToActive": false,
+    "savePath": "CAD/AssemblePiastraCilindro.SLDASM",
+    "snapshotPath": "Export/AssemblePiastraCilindro.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "comp1",
+      "type": "component",
+      "path": "CAD/Piastra80x50.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": true
+    },
+    {
+      "id": "comp2",
+      "type": "component",
+      "path": "CAD/Cilindro20x30.SLDPRT",
+      "x": 0,
+      "y": 10,
+      "z": 0,
+      "fix": false
+    },
+    {
+      "id": "m1",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp1",
+      "entity1": "top",
+      "component2": "comp2",
+      "entity2": "bottom"
+    },
+    {
+      "id": "m2",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp1",
+      "entity1": "inner",
+      "component2": "comp2",
+      "entity2": "inner"
+    },
+    {
+      "id": "m3",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp1",
+      "entity1": "inner",
+      "component2": "comp2",
+      "entity2": "inner"
+    },
+    {
+      "id": "v1",
+      "type": "verify"
+    }
+  ]
+}
