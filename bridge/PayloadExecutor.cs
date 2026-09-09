@@ -1904,7 +1904,15 @@ internal sealed partial class PayloadExecutor
         string rule;
         bool ok;
         var sandwichOk = SandwichBothFaces(items, out var sandwichFaces, out var sandwichInfo);
-        if (wantConcentric && wantCoincident && wantPerpendicular)
+        if (wantConcentric && wantCoincident && wantPerpendicular && items.Count >= 3)
+        {
+            // Base + colonna + piastra: seated su entrambe le facce, non la regola T-bar a 2 pezzi.
+            ok = concentric >= 1 && coincident >= 2 && perpendicular >= 1 && coaxial && sandwichOk;
+            rule = "concentric+coincident+perpendicular+sandwich+seated";
+            if (!string.IsNullOrEmpty(sandwichInfo))
+                pairInfo = string.IsNullOrEmpty(pairInfo) ? sandwichInfo : sandwichInfo + " " + pairInfo;
+        }
+        else if (wantConcentric && wantCoincident && wantPerpendicular)
         {
             // Barra a T: il bbox non è simmetrico (testa da un lato), coaxial bbox-center
             // fallisce anche con i fori Ø8 già concentrici. Il mate concentric è la prova.
@@ -2479,10 +2487,14 @@ internal sealed partial class PayloadExecutor
                     var thAxis = ThicknessAxis(plateBox);
                     var otherLen = Math.Abs(otherBox[thAxis + 1] - otherBox[thAxis]);
                     var plateT = Math.Abs(plateBox[thAxis + 1] - plateBox[thAxis]);
-                    // Vite/perno lunghi: la coincidente a filo deve attraversare il foro,
-                    // non lasciare la testa appoggiata sopra la piastra.
+                    // Vite/perno lunghi (2 PRT): la coincidente a filo deve attraversare il foro.
+                    // Colonna/distanziale in uno stack a 3 componenti: appoggio sulla faccia (FacesTouch).
                     if (otherLen > plateT + 8)
+                    {
+                        if (CountVisibleComponents(assy) >= 3)
+                            return through || ShoulderCapSeated(plateBox, otherBox) || touch;
                         return through || ShoulderCapSeated(plateBox, otherBox);
+                    }
                 }
 
                 return touch || through;
@@ -2501,7 +2513,16 @@ internal sealed partial class PayloadExecutor
                 var otherLenC = Math.Abs(otherBoxC[thAxisC + 1] - otherBoxC[thAxisC]);
                 var plateTC = Math.Abs(plateBoxC[thAxisC + 1] - plateBoxC[thAxisC]);
                 if (otherLenC > plateTC + 8)
+                {
+                    if (CountVisibleComponents(assy) >= 3)
+                    {
+                        return ThroughHoleSeated(plateBoxC, otherBoxC)
+                            || ShoulderCapSeated(plateBoxC, otherBoxC)
+                            || FacesTouch(b1c, b2c);
+                    }
+
                     return ThroughHoleSeated(plateBoxC, otherBoxC) || ShoulderCapSeated(plateBoxC, otherBoxC);
+                }
             }
         }
 
@@ -2557,6 +2578,12 @@ internal sealed partial class PayloadExecutor
 
     private static bool LooksLike(string key, string token) =>
         key.Contains(token, StringComparison.OrdinalIgnoreCase);
+
+    private static int CountVisibleComponents(IAssemblyDoc assy)
+    {
+        if (AsArray(assy.GetComponents(false)) is not object[] comps) return 0;
+        return comps.OfType<Component2>().Count();
+    }
 
     private static int ThicknessAxis(double[] plate)
     {

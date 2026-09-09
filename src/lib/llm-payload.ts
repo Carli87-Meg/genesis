@@ -203,6 +203,7 @@ export function interpretFromLlmText(
   if (jobOut) foldStandaloneRibIntoPlate(jobOut)
   if (jobOut) fixCountersinkAssemblyMates(jobOut)
   if (jobOut) fixCounterboreAssemblyMates(jobOut)
+  if (jobOut) fixStackedColumnAssembly(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -268,6 +269,9 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   normalizeCountersinkScrew(operations)
   ensureCounterborePlate(operations)
   normalizeCheeseHeadScrew(operations)
+  ensureStackBase(operations)
+  ensureStackColumn(operations)
+  ensureStackTopPlate(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -999,6 +1003,7 @@ function isCountersinkPlate(ops: CadOperation[]): boolean {
   const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
   const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
   if (ext8 && hasCircleDia(ops, 8)) return false
+  if (hasCircleDia(ops, 8) && !hasCircleDia(ops, 6) && !hasCircleDia(ops, 12)) return false
   if (hasCircleDia(ops, 10) && !hasCircleDia(ops, 6)) return false
   if (hasCircleDia(ops, 16)) return false
   const d6 = hasCircleDia(ops, 6)
@@ -1234,6 +1239,7 @@ function isCounterborePlate(ops: CadOperation[]): boolean {
 
 function isCheeseHeadScrew(ops: CadOperation[]): boolean {
   if (isCounterborePlate(ops) || isCountersinkPlate(ops) || isCountersinkScrew(ops)) return false
+  if (hasCircleDia(ops, 20)) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
   if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops)) return false
@@ -1551,6 +1557,257 @@ function fixCounterboreAssemblyMates(jobOut: SolidWorksDocumentPayload[]): void 
       d.operations.push(concentric)
     }
   }
+}
+
+function plateHoleOps(w: number, h: number, t: number, holeD: number): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: w, height: h }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: t },
+    { id: "s2", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: holeD }] },
+    { id: "c1", type: "cut", sketch: "s2", throughAll: true },
+  ]
+}
+
+function columnHoleOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 20 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 40 },
+    { id: "s2", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 8 }] },
+    { id: "c1", type: "cut", sketch: "s2", throughAll: true },
+  ]
+}
+
+function makePartDoc(name: string, ops: CadOperation[]): SolidWorksDocumentPayload {
+  return {
+    schemaVersion: 2,
+    units: "mm",
+    document: {
+      type: "part",
+      name,
+      attachToActive: false,
+      savePath: `CAD/${name}.SLDPRT`,
+      snapshotPath: `Export/${name}.jpg`,
+      snapshotView: "*Isometric",
+    },
+    variables: [],
+    configurations: [],
+    operations: ops,
+  }
+}
+
+function isStackBase(ops: CadOperation[]): boolean {
+  if (!sketchRects(ops).some((r) => isRectSize(r.width, r.height, 80, 60))) return false
+  if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops)) return false
+  return true
+}
+
+function isStackTopPlate(ops: CadOperation[]): boolean {
+  if (!sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
+  if (isStackBase(ops) || has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops)) return false
+  if (ops.some((o) => o.type === "fillet" || o.type === "chamfer")) return false
+  if (ops.some((o) => o.type === "revolve" && o.cut === true)) return false
+  const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
+  const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  if (ext8 && !ext6) return false
+  if (hasCircleDia(ops, 6) && !hasCircleDia(ops, 8)) return false
+  if (hasCircleDia(ops, 10) && !hasCircleDia(ops, 8)) return false
+  if (hasCircleDia(ops, 16) && !hasCircleDia(ops, 8)) return false
+  return ext6 || hasCircleDia(ops, 8)
+}
+
+function isStackColumn(ops: CadOperation[]): boolean {
+  if (isStackBase(ops) || isStackTopPlate(ops) || isCountersinkPlate(ops) || isCounterborePlate(ops)) return false
+  if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops)) return false
+  if (
+    sketchRects(ops).some(
+      (r) =>
+        isRectSize(r.width, r.height, 70, 50) ||
+        isRectSize(r.width, r.height, 60, 40) ||
+        isRectSize(r.width, r.height, 50, 40) ||
+        isRectSize(r.width, r.height, 80, 60),
+    )
+  ) {
+    return false
+  }
+  const ext40 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 40) < 0.6)
+  if (!ext40) return false
+  const d20 = hasCircleDia(ops, 20)
+  const square20 = sketchRects(ops).some((r) => isRectSize(r.width, r.height, 20, 20))
+  return d20 || square20
+}
+
+function ensureStackBase(ops: CadOperation[]): void {
+  if (!isStackBase(ops)) return
+  ops.length = 0
+  ops.push(...plateHoleOps(80, 60, 8, 8))
+}
+
+function ensureStackColumn(ops: CadOperation[]): void {
+  if (!isStackColumn(ops)) return
+  ops.length = 0
+  ops.push(...columnHoleOps())
+}
+
+function ensureStackTopPlate(ops: CadOperation[]): void {
+  if (!isStackTopPlate(ops)) return
+  ops.length = 0
+  ops.push(...plateHoleOps(50, 40, 6, 8))
+}
+
+function isStackedColumnJob(docs: SolidWorksDocumentPayload[]): boolean {
+  const parts = docs.filter((d) => d.document.type === "part")
+  if (parts.length === 0) return false
+  const names = parts.map((p) => p.document.name).join(" ")
+  if (/Base80x60|Colonna20x40|PiastraSuperiore50|AssiemeTrePezzi/i.test(names)) return true
+  const hasBase = parts.some((p) => isStackBase(p.operations))
+  const hasCol = parts.some((p) => isStackColumn(p.operations))
+  const hasTop = parts.some((p) => isStackTopPlate(p.operations))
+  if (hasBase && (hasCol || hasTop)) return true
+  if (hasCol && hasTop) return true
+  return false
+}
+
+function fixStackedColumnAssembly(jobOut: SolidWorksDocumentPayload[]): void {
+  if (!isStackedColumnJob(jobOut)) return
+
+  const parts = jobOut.filter((d) => d.document.type === "part")
+  let base = parts.find((p) => isStackBase(p.operations))
+  let column = parts.find((p) => p !== base && isStackColumn(p.operations))
+  let top = parts.find((p) => p !== base && p !== column && isStackTopPlate(p.operations))
+  if (!base) base = makePartDoc("Base80x60", plateHoleOps(80, 60, 8, 8))
+  else {
+    base.document.name = "Base80x60"
+    base.document.savePath = "CAD/Base80x60.SLDPRT"
+    ensureStackBase(base.operations)
+  }
+  if (!column) column = makePartDoc("Colonna20x40", columnHoleOps())
+  else {
+    column.document.name = "Colonna20x40"
+    column.document.savePath = "CAD/Colonna20x40.SLDPRT"
+    ensureStackColumn(column.operations)
+  }
+  if (!top) top = makePartDoc("PiastraSuperiore50", plateHoleOps(50, 40, 6, 8))
+  else {
+    top.document.name = "PiastraSuperiore50"
+    top.document.savePath = "CAD/PiastraSuperiore50.SLDPRT"
+    ensureStackTopPlate(top.operations)
+  }
+
+  let asm = jobOut.find((d) => d.document.type === "assembly")
+  if (!asm) {
+    asm = {
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "assembly",
+        name: "AssiemeTrePezzi",
+        attachToActive: false,
+        savePath: "CAD/AssiemeTrePezzi.SLDASM",
+        snapshotPath: "Export/AssiemeTrePezzi.jpg",
+        snapshotView: "*Isometric",
+      },
+      variables: [],
+      configurations: [],
+      operations: [],
+    }
+  } else {
+    asm.document.name = "AssiemeTrePezzi"
+    asm.document.savePath = "CAD/AssiemeTrePezzi.SLDASM"
+  }
+  asm.operations = [
+    { id: "comp-base", type: "component", path: "CAD/Base80x60.SLDPRT", x: 0, y: 0, z: 0, fix: true },
+    { id: "comp-col", type: "component", path: "CAD/Colonna20x40.SLDPRT", x: 0, y: 8, z: 0 },
+    { id: "comp-top", type: "component", path: "CAD/PiastraSuperiore50.SLDPRT", x: 0, y: 48, z: 0 },
+    {
+      id: "m-coin1",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-col",
+      component2: "comp-base",
+      entity1: "bottom",
+      entity2: "top",
+    },
+    {
+      id: "m-coin2",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-top",
+      component2: "comp-col",
+      entity1: "bottom",
+      entity2: "top",
+    },
+    {
+      id: "m-conc1",
+      type: "mate",
+      mateType: "concentric",
+      component1: "comp-col",
+      component2: "comp-base",
+      diameter: 8,
+    },
+    {
+      id: "m-conc2",
+      type: "mate",
+      mateType: "concentric",
+      component1: "comp-top",
+      component2: "comp-col",
+      diameter: 8,
+    },
+    {
+      id: "m-perp",
+      type: "mate",
+      mateType: "perpendicular",
+      component1: "comp-col",
+      component2: "comp-base",
+      entity1: "right",
+      entity2: "top",
+    },
+    { id: "v-auto", type: "verify" },
+  ]
+
+  const drawings = jobOut.filter((d) => d.document.type === "drawing")
+  for (const d of drawings) {
+    if (/Assemie|Sandwich|Sede|Svasata|demo/i.test(d.document.name) || !/^Tavola/i.test(d.document.name)) {
+      d.document.name = "TavolaTrePezzi"
+    }
+    d.document.savePath = `Disegni/${d.document.name}.SLDDRW`
+    d.document.sheetFormat = d.document.sheetFormat || "A3"
+    for (const op of d.operations) {
+      if (op.type === "standardViews" || op.type === "drawingView") {
+        const rec = op as { model?: string }
+        rec.model = "CAD/AssiemeTrePezzi.SLDASM"
+      }
+    }
+  }
+  if (drawings.length === 0) {
+    drawings.push({
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "drawing",
+        name: "TavolaTrePezzi",
+        attachToActive: false,
+        savePath: "Disegni/TavolaTrePezzi.SLDDRW",
+        snapshotPath: "Export/TavolaTrePezzi.jpg",
+        sheetFormat: "A3",
+      },
+      variables: [],
+      configurations: [],
+      operations: [
+        { id: "dv1", type: "standardViews", model: "CAD/AssiemeTrePezzi.SLDASM", firstAngle: true, includeIso: true },
+        { id: "dd1", type: "modelDimensions" },
+        {
+          id: "an1",
+          type: "annotation",
+          text: "Base 80×60×8 Ø8 — Colonna Ø20×40 Ø8 — Piastra 50×40×6 Ø8",
+          x: 0.02,
+          y: 0.27,
+        },
+      ],
+    })
+  }
+
+  jobOut.length = 0
+  jobOut.push(base, column, top, asm, ...drawings)
 }
 
 const Z_BRACKET_POLY: Array<[number, number]> = [

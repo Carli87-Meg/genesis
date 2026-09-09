@@ -22,10 +22,10 @@ Oppure in due terminali:
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\swiax1ug.dll
+dotnet bridge\bin\Release\net8.0-windows\swiax1uh.dll
 ```
 
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `swiax1ug.dll`; `dotnet …\swiax1ug.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `swiax1uh.dll`; `dotnet …\swiax1uh.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
 
 Prima di ogni tavola, snapshot 3D e `CloseDoc` il bridge esce da «Modifica schizzo» (`InsertSketch(false)` solo se lo schizzo è aperto) e fa `EditRebuild3` + `ForceRebuild3`.
 
