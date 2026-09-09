@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaPiastraSupporto",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaPiastraSupporto.SLDDRW",
+    "snapshotPath": "Export/TavolaPiastraSupporto.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/PiastraSupporto.SLDPRT",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "dd1",
+      "type": "modelDimensions"
+    },
+    {
+      "id": "da1",
+      "type": "annotation",
+      "text": "MATERIALE: ACCIAIO S235 | FINITURA: GREZZO | SCALA 1:1",
+      "x": 0.02,
+      "y": 0.27
+    },
+    {
+      "id": "da2",
+      "type": "annotation",
+      "text": "TASCA CENTRALE 50x30 PROF. 5 mm | NERVATURA 80x8 H=18 mm | 4x Ø8 PASSANTE INSET 12 mm",
+      "x": 0.02,
+      "y": 0.25
+    }
+  ]
+}

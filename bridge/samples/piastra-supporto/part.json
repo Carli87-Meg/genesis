@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "PiastraSupporto",
+    "attachToActive": false,
+    "savePath": "CAD/PiastraSupporto.SLDPRT",
+    "snapshotPath": "Export/PiastraSupporto.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 120,
+          "height": 80,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketchId": "s1",
+      "depth": 10,
+      "merge": false,
+      "sketch": "s1"
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 50,
+          "height": 30,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketchId": "s2",
+      "depth": 5,
+      "throughAll": false,
+      "sketch": "s2"
+    },
+    {
+      "id": "s3",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 36,
+          "width": 80,
+          "height": 8,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "extrude",
+      "sketchId": "s3",
+      "depth": 18,
+      "merge": true,
+      "sketch": "s3"
+    },
+    {
+      "id": "s4",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "circle",
+          "cx": -48,
+          "cy": -28,
+          "diameter": 8,
+          "kind": "circle"
+        },
+        {
+          "type": "circle",
+          "cx": 48,
+          "cy": -28,
+          "diameter": 8,
+          "kind": "circle"
+        },
+        {
+          "type": "circle",
+          "cx": -48,
+          "cy": 28,
+          "diameter": 8,
+          "kind": "circle"
+        },
+        {
+          "type": "circle",
+          "cx": 48,
+          "cy": 28,
+          "diameter": 8,
+          "kind": "circle"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "cut",
+      "sketchId": "s4",
+      "throughAll": true,
+      "sketch": "s4"
+    }
+  ]
+}
