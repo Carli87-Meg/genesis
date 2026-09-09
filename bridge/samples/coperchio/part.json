@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Coperchio",
+    "attachToActive": false,
+    "savePath": "CAD/Coperchio.SLDPRT",
+    "snapshotPath": "Export/Coperchio.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 80,
+          "height": 80,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketchId": "s1",
+      "depth": 3,
+      "merge": true,
+      "sketch": "s1"
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "circle",
+          "cx": -30,
+          "cy": -30,
+          "diameter": 4.5,
+          "kind": "circle"
+        },
+        {
+          "type": "circle",
+          "cx": 30,
+          "cy": -30,
+          "diameter": 4.5,
+          "kind": "circle"
+        },
+        {
+          "type": "circle",
+          "cx": 30,
+          "cy": 30,
+          "diameter": 4.5,
+          "kind": "circle"
+        },
+        {
+          "type": "circle",
+          "cx": -30,
+          "cy": 30,
+          "diameter": 4.5,
+          "kind": "circle"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketchId": "s2",
+      "throughAll": true,
+      "sketch": "s2"
+    },
+    {
+      "id": "s3",
+      "type": "sketch",
+      "plane": "Front",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": -15,
+          "cy": 14.5,
+          "width": 3,
+          "height": 22,
+          "kind": "rectangle",
+          "note": "montante sinistro: da Y=3 (top coperchio) a Y=25 (altezza esterna), centro Y=3+11=14, larghezza 3 centrata a X=-15"
+        },
+        {
+          "type": "rectangle",
+          "cx": 15,
+          "cy": 14.5,
+          "width": 3,
+          "height": 22,
+          "kind": "rectangle",
+          "note": "montante destro: speculare"
+        },
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 25,
+          "width": 33,
+          "height": 3,
+          "kind": "rectangle",
+          "note": "traversa superiore: da Y=23.5 a Y=26.5, larghezza 33 mm (da X=-16.5 a X=16.5), tocca i montanti senza gap"
+        }
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "extrude",
+      "sketchId": "s3",
+      "depth": 3,
+      "symmetric": true,
+      "merge": true,
+      "sketch": "s3"
+    }
+  ]
+}

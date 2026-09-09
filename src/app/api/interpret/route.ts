@@ -51,7 +51,8 @@ Single part: omit "job". Unique operation ids across the whole job. No sheet met
 TEMPLATES — use at most one, and only if the user request matches. Never mix them. Never emit a template the user did not ask for.
 
 Staffa a L / L-bracket / kit fissaggio a L:
-Use ONLY if the user asks for a staffa a L, L-bracket, or that named kit. A generic base + bushing/boccola is NOT this template. Do not emit StaffaFissaggio, BoccolaGuida, AssiemeStaffa, or TavolaStaffa unless asked.
+Use ONLY if the user explicitly asks for a staffa a L or L-bracket (the L-shaped kit with wall, boss Ø16, boccola). The word "staffa" alone is NOT enough.
+Do NOT use this template for: a flat staffa, a staffa with asola/slot, a staffa whose sizes are not 80×50×8, a coperchio/cover, a maniglia, or any other bracket. Example that is NOT the kit: "staffa 40×25×3 con asola 12×4" → compile a flat 40×25×3 plate with a 12×4 slot cut, new names, never StaffaFissaggio / BoccolaGuida / AssiemeStaffa.
 root is the main part; job = part, bushing, assembly, drawing.
 - Part: L-bracket 80×50×8 on Top, wall 80×8 extruded 40 mm on +Z edge, boss Ø16 height 14, 4 holes Ø6.5 at corners, guide bore Ø10.2 at center, cut throughAll. Names StaffaFissaggio, CAD/StaffaFissaggio.SLDPRT.
 - Bushing: circles Ø16 and Ø10.2, extrude 12 mm. BoccolaGuida, CAD/BoccolaGuida.SLDPRT.
@@ -65,7 +66,10 @@ Typical module (keep under 8 documents): FiancataSx, FiancataDx (Front 600×40, 
 Assembly: Sx fixed; concentric Ø8 with holeX ±220; coincident zmin/zmax so treads sit in the gap; parallel xmax to lock rotation; piede ymax to stringer ymin. Paths CAD/Name.SLDPRT.
 Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.
 
-Any other request (new plate, bushing, pin, assembly, drawing): compile the user's geometry with NEW PascalCase names. Never reuse StaffaFissaggio, BoccolaGuida, AssiemeStaffa, PiastraSupporto, FiancataSx, LongheroneSx. job = each unique part, then assembly if 2+ parts, then drawing if tavola/A3/Cartiglio_CM is asked. M6 clearance holes Ø6.6 unless specified. After mates, verify. Drawing: sheetFormat A3 Cartiglio_CM, standardViews.model = the assembly (or part) savePath.`
+Any other request (coperchio, maniglia, asola, new plate, bushing, pin, assembly, drawing): compile the user's geometry with NEW PascalCase names. Never reuse StaffaFissaggio, BoccolaGuida, AssiemeStaffa, PiastraSupporto, BasePiastra100, BoccolaCentrale, Piastra90, FiancataSx, LongheroneSx.
+Welded / saldata = same part, merge true, not a second component. U-handle height h: three merged rectangles on Front (two legs + top bar) standing on the lid, extrude a small thickness, or equivalent.
+Asola/slot W×H: cut a rectangle W×H (optionally two ØH circles at the ends). M4 clearance Ø4.5, M6 Ø6.6 unless specified.
+job = each unique part, then assembly if 2+ parts, then drawing if tavola/A3/Cartiglio_CM is asked. After mates, verify. Drawing: sheetFormat A3 Cartiglio_CM, standardViews.model = the assembly (or part) savePath.`
 
 type InterpretBody = {
   prompt?: string

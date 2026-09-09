@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaCoperchio",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaCoperchio.SLDDRW",
+    "snapshotPath": "Export/TavolaCoperchio.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dw1",
+      "type": "standardViews",
+      "model": "CAD/Coperchio.SLDPRT",
+      "firstAngle": true,
+      "includeIso": true,
+      "sheetFormat": "A3",
+      "template": "Cartiglio_CM"
+    },
+    {
+      "id": "dw2",
+      "type": "modelDimensions"
+    },
+    {
+      "id": "dw3",
+      "type": "annotation",
+      "text": "Maniglia a U saldata - altezza esterna 25 mm dal piano coperchio\nMateriale: acciaio - Spessore piastra: 3 mm\nFori angolari: Ø4.5 (passanti M4)",
+      "x": 0.02,
+      "y": 0.27
+    }
+  ]
+}

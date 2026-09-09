@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "StaffaAsolaSmall",
+    "attachToActive": false,
+    "savePath": "CAD/StaffaAsolaSmall.SLDPRT",
+    "snapshotPath": "Export/StaffaAsolaSmall.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 40,
+          "height": 25,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketchId": "s1",
+      "depth": 3,
+      "merge": false,
+      "sketch": "s1"
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 12,
+          "height": 4,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketchId": "s2",
+      "throughAll": true,
+      "sketch": "s2"
+    }
+  ]
+}
