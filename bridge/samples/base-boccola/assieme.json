@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemePiastraBoccola",
+    "attachToActive": false,
+    "savePath": "CAD/AssiemePiastraBoccola.SLDASM",
+    "snapshotPath": "Export/AssiemePiastraBoccola.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "comp1",
+      "type": "component",
+      "path": "CAD/BasePiastra100.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": true
+    },
+    {
+      "id": "comp2",
+      "type": "component",
+      "path": "CAD/BoccolaCentrale.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": false
+    },
+    {
+      "id": "m1",
+      "type": "mate",
+      "component1": "comp1",
+      "entity1": "inner",
+      "diameter1": 10,
+      "component2": "comp2",
+      "entity2": "inner",
+      "diameter2": 10,
+      "mateType": "concentric",
+      "diameter": 10
+    },
+    {
+      "id": "m2",
+      "type": "mate",
+      "component1": "comp1",
+      "entity1": "top",
+      "component2": "comp2",
+      "entity2": "bottom",
+      "mateType": "coincident"
+    },
+    {
+      "id": "v1",
+      "type": "verify"
+    }
+  ]
+}

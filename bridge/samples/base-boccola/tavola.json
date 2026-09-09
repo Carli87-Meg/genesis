@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaPiastraBoccola",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaPiastraBoccola.SLDDRW",
+    "snapshotPath": "Export/TavolaPiastraBoccola.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/AssiemePiastraBoccola.SLDASM",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "dm1",
+      "type": "modelDimensions"
+    },
+    {
+      "id": "an1",
+      "type": "annotation",
+      "text": "Piastra Base 100x60x8 mm - Boccola Ø16/Ø10 H20 mm\nForatura angoli Ø6.6 (M6 passante) - Foro centrale Ø10\nMateriale: Acciaio S235 - Scala 1:1",
+      "x": 0.02,
+      "y": 0.27
+    }
+  ]
+}

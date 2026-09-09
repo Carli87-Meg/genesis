@@ -359,6 +359,18 @@ function normalizeOp(raw: unknown, index: number): CadOperation | null {
       if (typeof alt === "string") next.model = alt
     }
   }
+  if (aliased === "mate") {
+    const mt = String(next.mateType ?? next.subtype ?? next.kind ?? "")
+      .trim()
+      .toLowerCase()
+    if (mt === "concentric" || mt === "coincident" || mt === "distance" || mt === "parallel" || mt === "perpendicular") {
+      next.mateType = mt
+    }
+    if (typeof next.diameter !== "number") {
+      const d1 = numish(next.diameter1)
+      if (d1 != null) next.diameter = d1
+    }
+  }
   return next as CadOperation
 }
 

@@ -1007,11 +1007,12 @@ internal sealed partial class PayloadExecutor
         var c2 = op.Str("component2");
         var e1 = op.Str("entity1", op.Str("plane1", "Front"));
         var e2 = op.Str("entity2", op.Str("plane2", "Front"));
-        var kind = op.Str("mateType", "coincident").ToLowerInvariant();
+        var kind = op.Str("mateType", op.Str("subtype", op.Str("kind", "coincident"))).ToLowerInvariant();
+        if (kind is "linear" or "circular" or "sketch") kind = "coincident";
         model.ClearSelection2(true);
 
         var selData = CreateMark1(model);
-        var targetR = ToMeters(op.Num("diameter", 0), units) / 2.0;
+        var targetR = ToMeters(op.Num("diameter", op.Num("diameter1", 0)), units) / 2.0;
         double? pickX = op.Has("holeX") ? ToMeters(op.Num("holeX"), units) : null;
         double? pickY = op.Has("holeY") ? ToMeters(op.Num("holeY"), units) : null;
         double? pickZ = op.Has("holeZ") ? ToMeters(op.Num("holeZ"), units) : null;

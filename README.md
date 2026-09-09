@@ -22,10 +22,10 @@ Oppure in due terminali:
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\kgcmhost.dll
+dotnet bridge\bin\Release\net8.0-windows\asmkghost.dll
 ```
 
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `kgcmhost.dll`; `dotnet …\kgcmhost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `asmkghost.dll`; `dotnet …\asmkghost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
 
 Il cartiglio **PESO Kg** usa `SW-Mass` in chilogrammi (non grammi MMGS). Il bridge imposta le unità di massa a kg e scrive le proprietà `PESO` / `Peso` / `Massa` prima del SaveAs.
 

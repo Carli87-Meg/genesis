@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "BoccolaCentrale",
+    "attachToActive": false,
+    "savePath": "CAD/BoccolaCentrale.SLDPRT",
+    "snapshotPath": "Export/BoccolaCentrale.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s4",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "circle",
+          "cx": 0,
+          "cy": 0,
+          "diameter": 16,
+          "kind": "circle"
+        },
+        {
+          "type": "circle",
+          "cx": 0,
+          "cy": 0,
+          "diameter": 10,
+          "kind": "circle"
+        }
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "extrude",
+      "sketchId": "s4",
+      "depth": 20,
+      "direction": "up",
+      "merge": false,
+      "sketch": "s4"
+    }
+  ]
+}
