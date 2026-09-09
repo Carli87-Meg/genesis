@@ -743,6 +743,24 @@ internal sealed partial class PayloadExecutor
                 }
                 if (feat is null)
                 {
+                    feat = featMgr.FeatureCut3(
+                        true, !flip, true, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
+                        false, false, false, false, 0.0, 0.0,
+                        false, false, false, false,
+                        false, true, true, true, true, false,
+                        (int)swStartConditions_e.swStartSketchPlane, 0, false);
+                }
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureCut3(
+                        true, !flip, false, t1, (int)swEndConditions_e.swEndCondBlind, depth, 0,
+                        false, false, false, false, 0.0, 0.0,
+                        false, false, false, false,
+                        false, true, true, true, true, false,
+                        (int)swStartConditions_e.swStartSketchPlane, 0, false);
+                }
+                if (feat is null)
+                {
                     feat = featMgr.FeatureCut4(
                         true, flip, true, t1, (int)swEndConditions_e.swEndCondBlind, Math.Max(depth, 0.01), 0,
                         false, false, false, false, 0.0, 0.0,
@@ -2260,7 +2278,12 @@ internal sealed partial class PayloadExecutor
             var b1 = FindBox(assy, c1);
             var b2 = FindBox(assy, c2);
             if (b1 is not null && b2 is not null)
-                return ThicknessAxis(b1) != ThicknessAxis(b2);
+            {
+                // Staffa a Z: altezza 28 e larghezza 30, entrambe ~Y/X; l’asse più sottile
+                // coincide con la piastra (Y) anche se Right ⊥ Top è vero.
+                if (ThicknessAxis(b1) != ThicknessAxis(b2)) return true;
+                return FacesTouch(b1, b2);
+            }
             return true;
         }
 

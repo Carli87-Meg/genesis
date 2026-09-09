@@ -187,6 +187,7 @@ export function interpretFromLlmText(
   const payload = payloadPair.doc
   let jobOut = jobDocs && jobDocs.length > 1 ? jobDocs : undefined
   if (jobOut) fillKitDefaults(jobOut)
+  if (jobOut) fixZBracketAssemblyMates(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -244,6 +245,7 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   const split = splitTwinRectangleSketches(operations)
   operations.length = 0
   operations.push(...split)
+  normalizeZBracketPart(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -567,6 +569,104 @@ function linkSketches(ops: CadOperation[]) {
       const rec = op as CadOperation & { path?: string; profile?: string; sketch?: string }
       if (!rec.path && sketchIds.length >= 1) rec.path = sketchIds[0]
       if (!rec.profile) rec.profile = rec.sketch || (sketchIds.length >= 2 ? sketchIds[1] : lastSketch)
+    }
+  }
+}
+
+const Z_BRACKET_POLY: Array<[number, number]> = [
+  [-20, 28],
+  [20, 28],
+  [20, 4],
+  [66, 4],
+  [66, 0],
+  [16, 0],
+  [16, 24],
+  [-20, 24],
+  [-20, 28],
+]
+
+function isZBracketPart(ops: CadOperation[]): boolean {
+  const lineCount = ops
+    .filter((o) => o.type === "sketch")
+    .flatMap((s) => (s.type === "sketch" ? s.contours : []))
+    .filter((c) => c.kind === "line" && !c.construction).length
+  const hasWidth30 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 30) < 0.6)
+  const hasD8 = ops.some(
+    (o) =>
+      o.type === "sketch" &&
+      o.contours.some((c) => c.kind === "circle" && Math.abs(c.diameter - 8) < 0.2),
+  )
+  return lineCount >= 8 && hasWidth30 && hasD8
+}
+
+/**
+ * Staffa a Z: polilinea Right (x=altezza Y, y=flange Z), foro Ø8 al centro del tetto.
+ * Il tetto è a Y=0 (ymin): throughAll non buca la base (offset in Z).
+ */
+function normalizeZBracketPart(ops: CadOperation[]): void {
+  if (!isZBracketPart(ops)) return
+  const poly = ops.find(
+    (o) =>
+      o.type === "sketch" && o.contours.filter((c) => c.kind === "line" && !c.construction).length >= 8,
+  )
+  if (!poly || poly.type !== "sketch") return
+  poly.plane = "Right"
+  poly.contours = []
+  for (let i = 0; i < Z_BRACKET_POLY.length - 1; i++) {
+    const [x1, y1] = Z_BRACKET_POLY[i]
+    const [x2, y2] = Z_BRACKET_POLY[i + 1]
+    poly.contours.push({ kind: "line", x1, y1, x2, y2, construction: false })
+  }
+  for (const ex of ops) {
+    if (ex.type === "extrude" && Math.abs(Number(ex.depth) - 30) < 0.6) {
+      ex.flip = true
+    }
+  }
+  for (const s of ops) {
+    if (s.type !== "sketch") continue
+    for (const c of s.contours) {
+      if (c.kind !== "circle" || Math.abs(c.diameter - 8) >= 0.2) continue
+      // Estrusione 30 su Right è midplane X[-15,15]: il centro larghezza è X=0, non 15.
+      c.cx = 0
+      c.cy = 0
+      s.plane = "Top"
+    }
+  }
+  for (const cut of ops) {
+    if (cut.type !== "cut") continue
+    const sketch = ops.find((o) => o.type === "sketch" && o.id === cut.sketch)
+    const d8 =
+      sketch &&
+      sketch.type === "sketch" &&
+      sketch.contours.some((c) => c.kind === "circle" && Math.abs(c.diameter - 8) < 0.2)
+    if (!d8) continue
+    cut.throughAll = true
+    cut.depth = undefined
+  }
+}
+
+function fixZBracketAssemblyMates(docs: SolidWorksDocumentPayload[]): void {
+  const zNames = docs
+    .filter((d) => d.document.type === "part" && isZBracketPart(d.operations))
+    .map((d) => d.document.name)
+  if (zNames.length === 0) return
+  for (const d of docs) {
+    if (d.document.type !== "assembly") continue
+    const zKeys = new Set<string>()
+    for (const op of d.operations) {
+      if (op.type !== "component") continue
+      const path = String(op.path || op.name || "")
+      if (zNames.some((n) => path.includes(n)) || /staffaz/i.test(path)) zKeys.add(op.id)
+    }
+    for (const op of d.operations) {
+      if (op.type !== "mate" || op.mateType !== "coincident") continue
+      if (zKeys.has(op.component1)) {
+        op.entity1 = "bottom"
+        op.entity2 = op.entity2 || "top"
+      } else if (zKeys.has(op.component2)) {
+        op.entity2 = "bottom"
+        op.entity1 = op.entity1 || "top"
+      }
     }
   }
 }
