@@ -1256,6 +1256,15 @@ internal sealed partial class PayloadExecutor
 
         var a = e1.ToLowerInvariant();
         var b = e2.ToLowerInvariant();
+        if (kind is "coincident" && (IsMinMaxEntity(a) || IsMinMaxEntity(b)))
+        {
+            return
+            [
+                (int)swMateAlign_e.swMateAlignCLOSEST,
+                (int)swMateAlign_e.swMateAlignANTI_ALIGNED,
+                (int)swMateAlign_e.swMateAlignALIGNED,
+            ];
+        }
         var oppositeFaces = (IsTopEntity(a) && IsBottomEntity(b)) || (IsBottomEntity(a) && IsTopEntity(b));
         var shoulderFace = IsShoulderEntity(a) || IsShoulderEntity(b);
         if (kind is "coincident" && (oppositeFaces || shoulderFace))
@@ -1271,6 +1280,16 @@ internal sealed partial class PayloadExecutor
         if (kind is "concentric")
         {
             return [(int)swMateAlign_e.swMateAlignALIGNED, (int)swMateAlign_e.swMateAlignANTI_ALIGNED];
+        }
+
+        if (kind is "perpendicular")
+        {
+            return
+            [
+                (int)swMateAlign_e.swMateAlignALIGNED,
+                (int)swMateAlign_e.swMateAlignANTI_ALIGNED,
+                (int)swMateAlign_e.swMateAlignCLOSEST,
+            ];
         }
 
         return
@@ -1289,6 +1308,18 @@ internal sealed partial class PayloadExecutor
 
     private static bool IsShoulderEntity(string e) =>
         e is "pad" or "boss" or "boss-top" or "faccia-boss" or "shoulder" or "spallamento";
+
+    private static bool IsMinMaxEntity(string e) =>
+        e is "xmin" or "xmax" or "ymin" or "ymax" or "zmin" or "zmax";
+
+    private static int MinMaxAxis(string e1, string e2)
+    {
+        var blob = (e1 + " " + e2).ToLowerInvariant();
+        if (blob.Contains("xmin") || blob.Contains("xmax")) return 0;
+        if (blob.Contains("ymin") || blob.Contains("ymax")) return 2;
+        if (blob.Contains("zmin") || blob.Contains("zmax")) return 4;
+        return -1;
+    }
 
     private bool SelectMateEntity(
         IAssemblyDoc assy,
@@ -1345,6 +1376,11 @@ internal sealed partial class PayloadExecutor
         if (IsBottomEntity(e))
         {
             return SelectComponentPlanarFace(assy, key, wantTop: false, append, selData);
+        }
+
+        if (e is "side" or "faccia-lat" or "laterale")
+        {
+            return SelectComponentPlane(assy, key, "Right", append, selData);
         }
 
         return SelectComponentPlane(assy, key, entity, append, selData);
@@ -1609,8 +1645,10 @@ internal sealed partial class PayloadExecutor
 
     /// <summary>
     /// Assieme generico: ≥2 componenti. Se il payload chiede concentric, resta
-    /// concentric≥1 e (coaxial|seated). Se chiede solo coincident (cubo/cilindro
-    /// sulla piastra, staffa a due piastre), coincident≥1 e seated basta.
+    /// concentric≥1 e (coaxial|seated). Se chiede coincident+perpendicular
+    /// (telaio a U), coincident≥1, perpendicular≥1, seated e piastre a 90°.
+    /// Se chiede solo coincident (cubo/cilindro sulla piastra, staffa a due
+    /// piastre), coincident≥1 e seated basta.
     /// </summary>
     private void VerifyGenericAssembly(ModelDoc2 model, IAssemblyDoc assy)
     {
@@ -1638,9 +1676,12 @@ internal sealed partial class PayloadExecutor
 
         var concentric = CountMatesOfType(model, 1);
         var coincident = CountMatesOfType(model, 0);
+        var perpendicular = CountMatesOfType(model, 2);
         var coaxial = false;
         var seated = false;
         var seatedShoulder = false;
+        var platesPerp = false;
+        var shortEndWalls = 0;
         var pairInfo = "";
         for (var i = 0; i < items.Count; i++)
         {
@@ -1653,8 +1694,8 @@ internal sealed partial class PayloadExecutor
                 var dz = Math.Abs((a[4] + a[5]) / 2 - (b[4] + b[5]) / 2);
                 var aligned = (dx < 3 ? 1 : 0) + (dy < 3 ? 1 : 0) + (dz < 3 ? 1 : 0);
                 var face = FacesTouch(a, b);
-                var plateBox = MinExtent(a) <= MinExtent(b) ? a : b;
-                var otherBox = MinExtent(a) <= MinExtent(b) ? b : a;
+                var plateBox = PreferPlateBox(a, b);
+                var otherBox = ReferenceEquals(plateBox, a) ? b : a;
                 CapExtents(plateBox, otherBox, out var capAbove, out var capBelow);
                 var shoulder = ShoulderCapSeated(plateBox, otherBox);
                 if (shoulder)
@@ -1663,15 +1704,31 @@ internal sealed partial class PayloadExecutor
                     seatedShoulder = true;
                 }
 
+                if (ThicknessAxis(a) != ThicknessAxis(b))
+                    platesPerp = true;
                 if (face) seated = true;
                 if (aligned >= 2) coaxial = true;
-                pairInfo =
-                    $"{items[i].Name}/{items[j].Name} dX={dx:0.02} dY={dy:0.02} dZ={dz:0.02} aligned={aligned} face={face} capAbove={capAbove:0.02} capBelow={capBelow:0.02}";
+                var plateAxis = ThicknessAxis(plateBox);
+                var wallAxis = ThicknessAxis(otherBox);
+                if (face && wallAxis == 0 && plateAxis == 2)
+                {
+                    var pLo = Math.Min(plateBox[0], plateBox[1]);
+                    var pHi = Math.Max(plateBox[0], plateBox[1]);
+                    var cx = (otherBox[0] + otherBox[1]) / 2.0;
+                    if (Math.Abs(cx - pLo) < 22 || Math.Abs(cx - pHi) < 22)
+                        shortEndWalls++;
+                }
+                if (face || string.IsNullOrEmpty(pairInfo))
+                {
+                    pairInfo =
+                        $"{items[i].Name}/{items[j].Name} dX={dx:0.02} dY={dy:0.02} dZ={dz:0.02} aligned={aligned} face={face} capAbove={capAbove:0.02} capBelow={capBelow:0.02}";
+                }
             }
         }
 
         var wantConcentric = PayloadRequestsMateKind("concentric");
         var wantCoincident = PayloadRequestsMateKind("coincident");
+        var wantPerpendicular = PayloadRequestsMateKind("perpendicular");
         var concentricOk = concentric >= 1 && (coaxial || seated);
         var coincidentOk = coincident >= 1 && seated;
         string rule;
@@ -1681,6 +1738,12 @@ internal sealed partial class PayloadExecutor
             seated = seatedShoulder;
             ok = concentric >= 1 && coaxial && seatedShoulder;
             rule = "concentric+seated";
+        }
+        else if (wantCoincident && wantPerpendicular)
+        {
+            ok = coincident >= 1 && perpendicular >= 1 && seated && platesPerp &&
+                 (items.Count < 3 || shortEndWalls >= 2);
+            rule = "coincident+perpendicular+seated";
         }
         else if (wantConcentric)
         {
@@ -1692,6 +1755,11 @@ internal sealed partial class PayloadExecutor
             ok = coincidentOk;
             rule = "coincident+seated";
         }
+        else if (wantPerpendicular)
+        {
+            ok = perpendicular >= 1 && platesPerp;
+            rule = "perpendicular";
+        }
         else
         {
             ok = concentricOk || coincidentOk;
@@ -1699,7 +1767,7 @@ internal sealed partial class PayloadExecutor
         }
 
         Step("verify", ok,
-            $"n={items.Count} concentric={concentric} coincident={coincident} coaxial={coaxial} seated={seated} rule={rule} {pairInfo}");
+            $"n={items.Count} concentric={concentric} coincident={coincident} perpendicular={perpendicular} coaxial={coaxial} seated={seated} perpGeom={platesPerp} shortEndWalls={shortEndWalls} rule={rule} {pairInfo}");
     }
 
     private bool PayloadRequestsMateKind(string kind)
@@ -1724,8 +1792,21 @@ internal sealed partial class PayloadExecutor
             var aHi = Math.Max(a[axis], a[axis + 1]);
             var bLo = Math.Min(b[axis], b[axis + 1]);
             var bHi = Math.Max(b[axis], b[axis + 1]);
-            if (Math.Abs(aLo - bHi) < 2.5 || Math.Abs(bLo - aHi) < 2.5)
-                return true;
+            if (Math.Abs(aLo - bHi) >= 2.5 && Math.Abs(bLo - aHi) >= 2.5)
+                continue;
+            var overlap = true;
+            for (var o = 0; o <= 4; o += 2)
+            {
+                if (o == axis) continue;
+                var aO0 = Math.Min(a[o], a[o + 1]);
+                var aO1 = Math.Max(a[o], a[o + 1]);
+                var bO0 = Math.Min(b[o], b[o + 1]);
+                var bO1 = Math.Max(b[o], b[o + 1]);
+                if (Math.Min(aO1, bO1) - Math.Max(aO0, bO0) < -1.5)
+                    overlap = false;
+            }
+
+            if (overlap) return true;
         }
 
         return false;
@@ -1737,6 +1818,20 @@ internal sealed partial class PayloadExecutor
         var dy = Math.Abs(b[3] - b[2]);
         var dz = Math.Abs(b[5] - b[4]);
         return Math.Min(dx, Math.Min(dy, dz));
+    }
+
+    private static double[] PreferPlateBox(double[] a, double[] b)
+    {
+        return PlateFootprint(a) >= PlateFootprint(b) ? a : b;
+    }
+
+    private static double PlateFootprint(double[] x)
+    {
+        var t = ThicknessAxis(x);
+        var e0 = Math.Abs(x[1] - x[0]);
+        var e1 = Math.Abs(x[3] - x[2]);
+        var e2 = Math.Abs(x[5] - x[4]);
+        return t == 0 ? e1 * e2 : t == 2 ? e0 * e2 : e0 * e1;
     }
 
     /// <summary>
@@ -2080,14 +2175,23 @@ internal sealed partial class PayloadExecutor
 
     private bool MateGeometryOk(IAssemblyDoc assy, string kind, string c1, string e1, string c2, string e2)
     {
+        if (kind is "perpendicular")
+        {
+            var b1 = FindBox(assy, c1);
+            var b2 = FindBox(assy, c2);
+            if (b1 is not null && b2 is not null)
+                return ThicknessAxis(b1) != ThicknessAxis(b2);
+            return true;
+        }
+
         if (kind is "coincident")
         {
             var b1 = FindBox(assy, c1);
             var b2 = FindBox(assy, c2);
             if (b1 is not null && b2 is not null)
             {
-                var plateBox = MinExtent(b1) <= MinExtent(b2) ? b1 : b2;
-                var otherBox = MinExtent(b1) <= MinExtent(b2) ? b2 : b1;
+                var plateBox = PreferPlateBox(b1, b2);
+                var otherBox = ReferenceEquals(plateBox, b1) ? b2 : b1;
                 if (IsShoulderEntity(e1.ToLowerInvariant()) || IsShoulderEntity(e2.ToLowerInvariant()))
                 {
                     var seated = ShoulderCapSeated(plateBox, otherBox);
@@ -2099,6 +2203,19 @@ internal sealed partial class PayloadExecutor
                     }
 
                     return seated;
+                }
+
+                if (IsMinMaxEntity(e1.ToLowerInvariant()) || IsMinMaxEntity(e2.ToLowerInvariant()))
+                {
+                    var mmAxis = MinMaxAxis(e1, e2);
+                    if (mmAxis >= 0)
+                    {
+                        var eA = Math.Abs(b1[mmAxis + 1] - b1[mmAxis]);
+                        var eB = Math.Abs(b2[mmAxis + 1] - b2[mmAxis]);
+                        var wall = Math.Min(eA, eB);
+                        // Parete sul lato corto: spessore ~t sull'asse del mate, non ruotata sul lato lungo.
+                        return FacesTouch(b1, b2) && wall < 14;
+                    }
                 }
 
                 return FacesTouch(b1, b2) || ShoulderCapSeated(plateBox, otherBox);
@@ -2496,7 +2613,7 @@ internal sealed partial class PayloadExecutor
         plane.ToLowerInvariant() switch
         {
             "front" or "frontale" => ["Front Plane", "Piano frontale", "Piano Frontale", "Front"],
-            "right" or "destro" => ["Right Plane", "Piano destro", "Piano Destro", "Right"],
+            "right" or "destro" or "side" or "laterale" => ["Right Plane", "Piano destro", "Piano Destro", "Right"],
             "origin" or "origine" => ["Origine", "Origin", "OriginProfileFeature"],
             _ => ["Top Plane", "Piano superiore", "Piano Superiore", "Top"],
         };

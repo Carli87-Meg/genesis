@@ -110,7 +110,7 @@ export type CadOperation =
       id: string
       type: "mate"
       name?: string
-      mateType: "coincident" | "concentric" | "distance" | "parallel"
+      mateType: "coincident" | "concentric" | "distance" | "parallel" | "perpendicular"
       component1: string
       component2: string
       entity1?: string
