@@ -62,6 +62,9 @@ const TYPE_ALIAS: Record<string, string> = {
   clearmates: "clearMates",
   quotesketches: "quoteSketches",
   quote_sketches: "quoteSketches",
+  smusso: "chamfer",
+  chamfer: "chamfer",
+  featurechamfer: "chamfer",
 }
 
 const PLANE_ALIAS: Record<string, "Front" | "Top" | "Right"> = {
@@ -246,6 +249,7 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   operations.length = 0
   operations.push(...split)
   normalizeZBracketPart(operations)
+  ensureThicknessChamfer(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -422,6 +426,13 @@ function normalizeOp(raw: unknown, index: number): CadOperation | null {
       if (d1 != null) next.diameter = d1
     }
   }
+  if (aliased === "chamfer") {
+    if (typeof next.distance !== "number") {
+      const d = numish(next.d) ?? numish(next.size) ?? numish(next.length)
+      if (d != null) next.distance = d
+    }
+    if (next.allEdges === undefined) next.allEdges = true
+  }
   return next as CadOperation
 }
 
@@ -571,6 +582,41 @@ function linkSketches(ops: CadOperation[]) {
       if (!rec.profile) rec.profile = rec.sketch || (sketchIds.length >= 2 ? sketchIds[1] : lastSketch)
     }
   }
+}
+
+/** Piastra 60×40×8 + Ø10: smusso feature 2×45° dopo l’estrusione e prima del foro. */
+function ensureThicknessChamfer(ops: CadOperation[]): void {
+  const hasRect6040 = ops.some(
+    (o) =>
+      o.type === "sketch" &&
+      o.contours.some((c) => {
+        if (c.kind !== "rectangle") return false
+        const w = Number(c.width)
+        const h = Number(c.height)
+        return (
+          (Math.abs(w - 60) < 0.2 && Math.abs(h - 40) < 0.2) ||
+          (Math.abs(w - 40) < 0.2 && Math.abs(h - 60) < 0.2)
+        )
+      }),
+  )
+  const extIdx = ops.findIndex((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  const hasD10 = ops.some(
+    (o) =>
+      o.type === "sketch" &&
+      o.contours.some((c) => c.kind === "circle" && Math.abs(c.diameter - 10) < 0.2),
+  )
+  if (!hasRect6040 || extIdx < 0 || !hasD10) return
+  let chamfer = ops.find((o) => o.type === "chamfer")
+  if (chamfer) {
+    chamfer.distance = chamfer.distance > 0 ? chamfer.distance : 2
+    chamfer.allEdges = true
+    const at = ops.indexOf(chamfer)
+    if (at >= 0) ops.splice(at, 1)
+  } else {
+    chamfer = { id: "ch1", type: "chamfer", distance: 2, allEdges: true }
+  }
+  const extAfter = ops.findIndex((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  ops.splice((extAfter >= 0 ? extAfter : extIdx) + 1, 0, chamfer)
 }
 
 const Z_BRACKET_POLY: Array<[number, number]> = [
