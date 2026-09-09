@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemeBaseDistanziali",
+    "attachToActive": false,
+    "savePath": "CAD/AssiemeBaseDistanziali.SLDASM",
+    "snapshotPath": "Export/AssiemeBaseDistanziali.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "comp1",
+      "type": "component",
+      "path": "CAD/BaseRettangolare.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": true
+    },
+    {
+      "id": "comp2",
+      "type": "component",
+      "path": "CAD/DistanzialeRound.SLDPRT",
+      "x": -40,
+      "y": -25,
+      "z": 12,
+      "fix": false
+    },
+    {
+      "id": "comp3",
+      "type": "component",
+      "path": "CAD/DistanzialeRound.SLDPRT",
+      "x": 40,
+      "y": -25,
+      "z": 12,
+      "fix": false
+    },
+    {
+      "id": "m1",
+      "type": "mate",
+      "mateType": "concentric",
+      "component1": "comp2",
+      "entity1": "inner",
+      "diameter": 8,
+      "component2": "comp1",
+      "entity2": "inner",
+      "holeX": -40,
+      "holeY": -25
+    },
+    {
+      "id": "m2",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp2",
+      "entity1": "bottom",
+      "component2": "comp1",
+      "entity2": "top"
+    },
+    {
+      "id": "m3",
+      "type": "mate",
+      "mateType": "concentric",
+      "component1": "comp3",
+      "entity1": "inner",
+      "diameter": 8,
+      "component2": "comp1",
+      "entity2": "inner",
+      "holeX": 40,
+      "holeY": -25
+    },
+    {
+      "id": "m4",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp3",
+      "entity1": "bottom",
+      "component2": "comp1",
+      "entity2": "top"
+    },
+    {
+      "id": "v1",
+      "type": "verify"
+    }
+  ]
+}

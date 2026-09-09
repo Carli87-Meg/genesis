@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "DistanzialeRound",
+    "attachToActive": false,
+    "savePath": "CAD/DistanzialeRound.SLDPRT",
+    "snapshotPath": "Export/DistanzialeRound.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s3",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "circle",
+          "cx": 0,
+          "cy": 0,
+          "diameter": 16
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "circle_diameter",
+          "value": 16
+        }
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "extrude",
+      "sketch": "s3",
+      "depth": 20,
+      "merge": false
+    },
+    {
+      "id": "s4",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "circle",
+          "cx": 0,
+          "cy": 0,
+          "diameter": 8
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "circle_diameter",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "cut",
+      "sketch": "s4",
+      "throughAll": true
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaAssiemeBase",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaAssiemeBase.SLDDRW",
+    "snapshotPath": "Export/TavolaAssiemeBase.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/AssiemeBaseDistanziali.SLDASM",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "dm1",
+      "type": "modelDimensions"
+    },
+    {
+      "id": "an1",
+      "type": "annotation",
+      "text": "Base 120×80×10 — 4 fori Ø8 passanti\nDistanziale Ø16×h20 — foro Ø8 passante\n2× DistanzialeRound.SLDPRT (identici)",
+      "x": 0.02,
+      "y": 0.27
+    }
+  ]
+}

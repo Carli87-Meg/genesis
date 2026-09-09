@@ -38,7 +38,7 @@ Sketch origin = plate center. rectangle/circle use cx,cy (not centerX, not posit
 Planes: Front|Top|Right. ISO Italian: Piano superiore = XZ, extrude along +Y.
 Ops: sketch (plane, contours rectangle|circle|line|arc), extrude (sketch id, depth mm, merge),
 cut (sketch id, throughAll true for holes), revolve, sweep (profile sketch id, path sketch id), hole, fillet, chamfer, shell, pattern,
-component (path, x,y,z, fix), mate (mateType coincident|concentric — never "subtype", component1/2, entity1/2 inner|outer|top|bottom|pad, diameter mm),
+component (path, x,y,z, fix), mate (mateType coincident|concentric — never "subtype", component1/2, entity1/2 inner|outer|top|bottom|pad, diameter mm; to pick one of several holes set holeX/holeY in sketch mm — never holeIndex),
 After mates in an assembly always append {"id":"v1","type":"verify"} — COM step ok is not proof of pose.
 sheetFormat (format A3|A2), standardViews (model: assembly or part savePath, firstAngle true, includeIso true),
 modelDimensions, annotation (text, x, y in sheet metres: A3 ≈ 0.420×0.297, typical note 0.02, 0.27; values >2 mean millimetres and the compiler converts).

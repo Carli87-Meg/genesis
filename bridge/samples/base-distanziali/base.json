@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "BaseRettangolare",
+    "attachToActive": false,
+    "savePath": "CAD/BaseRettangolare.SLDPRT",
+    "snapshotPath": "Export/BaseRettangolare.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 120,
+          "height": 80
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "width",
+          "value": 120
+        },
+        {
+          "entity": "height",
+          "value": 80
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketch": "s1",
+      "depth": 10,
+      "merge": false
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "circle",
+          "cx": -40,
+          "cy": -25,
+          "diameter": 8
+        },
+        {
+          "kind": "circle",
+          "cx": 40,
+          "cy": -25,
+          "diameter": 8
+        },
+        {
+          "kind": "circle",
+          "cx": -40,
+          "cy": 25,
+          "diameter": 8
+        },
+        {
+          "kind": "circle",
+          "cx": 40,
+          "cy": 25,
+          "diameter": 8
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "circle1_diameter",
+          "value": 8
+        },
+        {
+          "entity": "circle1_cx_from_origin",
+          "value": 40
+        },
+        {
+          "entity": "circle1_cy_from_origin",
+          "value": 25
+        },
+        {
+          "entity": "circle2_diameter",
+          "value": 8
+        },
+        {
+          "entity": "circle3_diameter",
+          "value": 8
+        },
+        {
+          "entity": "circle4_diameter",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketch": "s2",
+      "throughAll": true
+    }
+  ]
+}
