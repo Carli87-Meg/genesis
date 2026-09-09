@@ -539,9 +539,7 @@ internal sealed partial class PayloadExecutor
             case "revolve": DoRevolve(model, op); break;
             case "sweep": DoSweep(model, op); break;
             case "hole": DoHole(model, op, units); break;
-            case "fillet":
-                Step("FeatureManager.FeatureFillet", true, "saltato (fillet non affidabile in questa sessione)");
-                break;
+            case "fillet": DoFillet(model, op, units); break;
             case "chamfer": DoChamfer(model, op, units); break;
             case "shell": DoShell(model, op, units); break;
             case "pattern": DoPattern(model, op, units); break;
@@ -962,21 +960,65 @@ internal sealed partial class PayloadExecutor
 
     private void DoFillet(ModelDoc2 model, CadOperation op, string units)
     {
-        var radius = ToMeters(op.Num("radius", 1), units);
-        if (op.Flag("allEdges", true)) SelectAllBodyEdges(model);
+        var radiusMm = op.Num("radius", 1);
+        var radius = ToMeters(radiusMm, units);
+        var nSel = 0;
+        if (op.Flag("allEdges", true))
+        {
+            nSel = SelectThicknessEdges(model);
+            if (nSel == 0)
+            {
+                SelectAllBodyEdges(model);
+                nSel = -1;
+            }
+        }
+
+        Step("selectEdges", true, nSel >= 0 ? $"spessore n={nSel}" : "tutti gli spigoli");
+
+        var opts =
+            (int)swFeatureFilletOptions_e.swFeatureFilletPropagate |
+            (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius;
+        var featMgr = (IFeatureManager)model.FeatureManager;
+        Feature? feat = TryFeatureFillet(featMgr, opts, radius);
+        if (feat is null && nSel > 0)
+        {
+            SelectAllBodyEdges(model);
+            feat = TryFeatureFillet(featMgr, opts, radius);
+            if (feat is not null) nSel = -1;
+        }
+
+        if (feat is not null) RememberFeature(op.Id, op.Name, feat);
+        Step("FeatureManager.FeatureFillet", feat is not null, $"R={radiusMm} {units} edges={nSel}");
+    }
+
+    private static Feature? TryFeatureFillet(IFeatureManager featMgr, int opts, double radius)
+    {
         try
         {
-            var featMgr = (IFeatureManager)model.FeatureManager;
-            var feat = featMgr.FeatureFillet3(
-                0, radius, 0, 0, 0, 0, 0,
-                null, null, null, null, null, null, null) as Feature;
-            if (feat is not null) RememberFeature(op.Id, op.Name, feat);
-            Step("FeatureManager.FeatureFillet", feat is not null, $"R={op.Num("radius")} {units}");
+            if (featMgr.FeatureFillet3(
+                    opts, radius, 0, 0, 0, 0, 0,
+                    null, null, null, null, null, null, null) is Feature a)
+                return a;
         }
-        catch (Exception ex)
+        catch { /* FeatureFillet */ }
+
+        try
         {
-            Step("FeatureManager.FeatureFillet", false, FormatEx(ex));
+            if (featMgr.FeatureFillet(opts, radius, 0, 0, null, null, null) is Feature b)
+                return b;
         }
+        catch { /* FeatureFillet2 */ }
+
+        try
+        {
+            if (featMgr.FeatureFillet2(
+                    opts, radius, 0, 0, 0, 0,
+                    null, null, null, null, null) is Feature c)
+                return c;
+        }
+        catch { /* none */ }
+
+        return null;
     }
 
     private void DoChamfer(ModelDoc2 model, CadOperation op, string units)
@@ -3574,6 +3616,77 @@ internal sealed partial class PayloadExecutor
     {
         var feat = FeatureTreeReader.FindByName(model, name);
         return feat is not null && feat.Select2(false, 0);
+    }
+
+    private static int SelectThicknessEdges(ModelDoc2 model)
+    {
+        try
+        {
+            if (model is not IPartDoc part) return 0;
+            var bodies = AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true));
+            if (bodies is null) return 0;
+            var n = 0;
+            var first = true;
+            foreach (var bObj in bodies)
+            {
+                if (bObj is not Body2 body) continue;
+                var thickM = ThicknessFromBox(AsDoubles(body.GetBodyBox()));
+                var edges = AsArray(body.GetEdges());
+                if (edges is null) continue;
+                foreach (var edgeObj in edges)
+                {
+                    var len = EdgeLengthMeters(edgeObj);
+                    if (len <= 0 || Math.Abs(len - thickM) > 0.0015) continue;
+                    if (edgeObj is IEntity ent)
+                    {
+                        ent.Select4(!first, null);
+                        first = false;
+                        n++;
+                    }
+                }
+            }
+
+            return n;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static double ThicknessFromBox(double[]? box)
+    {
+        if (box is not { Length: >= 6 }) return 0.008;
+        var extents = new[]
+        {
+            Math.Abs(box[1] - box[0]),
+            Math.Abs(box[3] - box[2]),
+            Math.Abs(box[5] - box[4]),
+            Math.Abs(box[3] - box[0]),
+            Math.Abs(box[4] - box[1]),
+            Math.Abs(box[5] - box[2]),
+        };
+        var thick = extents.Where(v => v > 0.001 && v < 0.025).DefaultIfEmpty(0.008).Min();
+        return thick;
+    }
+
+    private static double EdgeLengthMeters(object edgeObj)
+    {
+        try
+        {
+            if (edgeObj is not IEdge edge) return 0;
+            var p1 = AsDoubles((edge.GetStartVertex() as IVertex)?.GetPoint());
+            var p2 = AsDoubles((edge.GetEndVertex() as IVertex)?.GetPoint());
+            if (p1 is not { Length: >= 3 } || p2 is not { Length: >= 3 }) return 0;
+            var dx = p1[0] - p2[0];
+            var dy = p1[1] - p2[1];
+            var dz = p1[2] - p2[2];
+            return Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private static void SelectAllBodyEdges(ModelDoc2 model)

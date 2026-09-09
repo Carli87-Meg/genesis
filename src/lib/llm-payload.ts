@@ -65,6 +65,10 @@ const TYPE_ALIAS: Record<string, string> = {
   smusso: "chamfer",
   chamfer: "chamfer",
   featurechamfer: "chamfer",
+  raccordo: "fillet",
+  fillet: "fillet",
+  featurefillet: "fillet",
+  raggio: "fillet",
 }
 
 const PLANE_ALIAS: Record<string, "Front" | "Top" | "Right"> = {
@@ -251,6 +255,7 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   operations.push(...split)
   normalizeZBracketPart(operations)
   ensureThicknessChamfer(operations)
+  ensureThicknessFillet(operations)
   ensurePlateRib(operations)
   recenterCornerOrigin(operations)
 
@@ -432,6 +437,13 @@ function normalizeOp(raw: unknown, index: number): CadOperation | null {
     if (typeof next.distance !== "number") {
       const d = numish(next.d) ?? numish(next.size) ?? numish(next.length)
       if (d != null) next.distance = d
+    }
+    if (next.allEdges === undefined) next.allEdges = true
+  }
+  if (aliased === "fillet") {
+    if (typeof next.radius !== "number") {
+      const r = numish(next.r) ?? numish(next.size) ?? numish(next.radiusMm)
+      if (r != null) next.radius = r
     }
     if (next.allEdges === undefined) next.allEdges = true
   }
@@ -619,6 +631,50 @@ function ensureThicknessChamfer(ops: CadOperation[]): void {
   }
   const extAfter = ops.findIndex((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
   ops.splice((extAfter >= 0 ? extAfter : extIdx) + 1, 0, chamfer)
+}
+
+/** Piastra 50×40×8 + Ø8: raccordo feature R3 dopo l’estrusione e prima del foro. */
+function ensureThicknessFillet(ops: CadOperation[]): void {
+  const hasRect5040 = ops.some(
+    (o) =>
+      o.type === "sketch" &&
+      o.contours.some((c) => {
+        if (c.kind !== "rectangle") return false
+        return isRectSize(Number(c.width), Number(c.height), 50, 40)
+      }),
+  )
+  const extIdx = ops.findIndex((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  const hasD8 = hasCircleDia(ops, 8)
+  if (!hasRect5040 || extIdx < 0 || !hasD8) return
+  if (hasCircleDia(ops, 10) && ops.some((o) => o.type === "chamfer")) return
+
+  const first = ops.find((o) => o.type === "sketch")
+  if (first && first.type === "sketch") {
+    const arcs = first.contours.filter((c) => c.kind === "arc").length
+    const rect = first.contours.find((c) => c.kind === "rectangle")
+    if (arcs >= 2 && !rect) {
+      first.plane = "Top"
+      first.contours = [{ kind: "rectangle", cx: 0, cy: 0, width: 50, height: 40 }]
+    } else if (arcs >= 2 && rect && rect.kind === "rectangle") {
+      first.contours = first.contours.filter((c) => c.kind !== "arc")
+    }
+  }
+
+  for (let i = ops.length - 1; i >= 0; i--) {
+    if (ops[i].type === "chamfer") ops.splice(i, 1)
+  }
+
+  let fillet = ops.find((o) => o.type === "fillet")
+  if (fillet) {
+    fillet.radius = fillet.radius > 0 ? fillet.radius : 3
+    fillet.allEdges = true
+    const at = ops.indexOf(fillet)
+    if (at >= 0) ops.splice(at, 1)
+  } else {
+    fillet = { id: uniqueOpId(ops, "f"), type: "fillet", radius: 3, allEdges: true }
+  }
+  const extAfter = ops.findIndex((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  ops.splice((extAfter >= 0 ? extAfter : extIdx) + 1, 0, fillet)
 }
 
 function uniqueOpId(ops: CadOperation[], prefix: string): string {
