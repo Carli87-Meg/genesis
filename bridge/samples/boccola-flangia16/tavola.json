@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaBoccolaPiastra",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaBoccolaPiastra.SLDDRW",
+    "snapshotPath": "Export/TavolaBoccolaPiastra.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/AssemieBoccolaPiastra.SLDASM",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "dm1",
+      "type": "modelDimensions"
+    },
+    {
+      "id": "an1",
+      "type": "annotation",
+      "text": "Boccola Ø16 L25 flangia Ø28 sp.4 - 4 fori Ø4.2 su PCD Ø22\nPiastra 70×50×5 foro centrale Ø16\nMateriale: acciaio C40 - Tolleranze generali ISO 2768-m",
+      "x": 0.02,
+      "y": 0.27
+    }
+  ]
+}

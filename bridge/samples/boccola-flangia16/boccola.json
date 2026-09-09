@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "BoccolaFlangia16",
+    "attachToActive": false,
+    "savePath": "CAD/BoccolaFlangia16.SLDPRT",
+    "snapshotPath": "Export/BoccolaFlangia16.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Front",
+      "contours": [
+        {
+          "kind": "line",
+          "x1": 0,
+          "y1": 0,
+          "x2": 0,
+          "y2": 25,
+          "construction": true
+        },
+        {
+          "kind": "line",
+          "x1": 5,
+          "y1": 0,
+          "x2": 14,
+          "y2": 0,
+          "construction": false
+        },
+        {
+          "kind": "line",
+          "x1": 14,
+          "y1": 0,
+          "x2": 14,
+          "y2": 4,
+          "construction": false
+        },
+        {
+          "kind": "line",
+          "x1": 14,
+          "y1": 4,
+          "x2": 8,
+          "y2": 4,
+          "construction": false
+        },
+        {
+          "kind": "line",
+          "x1": 8,
+          "y1": 4,
+          "x2": 8,
+          "y2": 25,
+          "construction": false
+        },
+        {
+          "kind": "line",
+          "x1": 8,
+          "y1": 25,
+          "x2": 5,
+          "y2": 25,
+          "construction": false
+        },
+        {
+          "kind": "line",
+          "x1": 5,
+          "y1": 25,
+          "x2": 5,
+          "y2": 0,
+          "construction": false
+        }
+      ],
+      "dimensions": [
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            5,
+            0
+          ],
+          "value": 5,
+          "label": "ri"
+        },
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            14,
+            0
+          ],
+          "value": 14,
+          "label": "rf"
+        },
+        {
+          "from": [
+            0,
+            4
+          ],
+          "to": [
+            14,
+            4
+          ],
+          "value": 14,
+          "label": "rf_check"
+        },
+        {
+          "from": [
+            0,
+            4
+          ],
+          "to": [
+            8,
+            4
+          ],
+          "value": 8,
+          "label": "rb"
+        },
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            0,
+            4
+          ],
+          "value": 4,
+          "label": "tf"
+        },
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            0,
+            25
+          ],
+          "value": 25,
+          "label": "L"
+        }
+      ]
+    },
+    {
+      "id": "r1",
+      "type": "revolve",
+      "sketch": "s1",
+      "angle": 360
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "circle",
+          "cx": 11,
+          "cy": 0,
+          "diameter": 4.2
+        },
+        {
+          "kind": "circle",
+          "cx": -11,
+          "cy": 0,
+          "diameter": 4.2
+        },
+        {
+          "kind": "circle",
+          "cx": 0,
+          "cy": 11,
+          "diameter": 4.2
+        },
+        {
+          "kind": "circle",
+          "cx": 0,
+          "cy": -11,
+          "diameter": 4.2
+        }
+      ],
+      "dimensions": [
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            11,
+            0
+          ],
+          "value": 11,
+          "label": "PCD_r"
+        },
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            -11,
+            0
+          ],
+          "value": 11,
+          "label": "PCD_r2"
+        },
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            0,
+            11
+          ],
+          "value": 11,
+          "label": "PCD_r3"
+        },
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            0,
+            -11
+          ],
+          "value": 11,
+          "label": "PCD_r4"
+        },
+        {
+          "kind": "diameter",
+          "circle": 0,
+          "value": 4.2,
+          "label": "hole_d"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketch": "s2",
+      "throughAll": true
+    }
+  ]
+}

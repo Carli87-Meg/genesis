@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssemieBoccolaPiastra",
+    "attachToActive": false,
+    "savePath": "CAD/AssemieBoccolaPiastra.SLDASM",
+    "snapshotPath": "Export/AssemieBoccolaPiastra.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "comp1",
+      "type": "component",
+      "path": "CAD/PiastraForo16.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": true
+    },
+    {
+      "id": "comp2",
+      "type": "component",
+      "path": "CAD/BoccolaFlangia16.SLDPRT",
+      "x": 0,
+      "y": 10,
+      "z": 0,
+      "fix": false
+    },
+    {
+      "id": "m1",
+      "type": "mate",
+      "mateType": "concentric",
+      "component1": "CAD/BoccolaFlangia16.SLDPRT",
+      "entity1": "inner",
+      "diameter": 16,
+      "component2": "CAD/PiastraForo16.SLDPRT",
+      "entity2": "inner",
+      "diameter2": 16
+    },
+    {
+      "id": "m2",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "CAD/BoccolaFlangia16.SLDPRT",
+      "entity1": "bottom",
+      "component2": "CAD/PiastraForo16.SLDPRT",
+      "entity2": "top"
+    },
+    {
+      "id": "v1",
+      "type": "verify"
+    }
+  ]
+}

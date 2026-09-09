@@ -120,6 +120,21 @@ curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\tavola.json"
 ```
 
+Boccola flangiata Ø16 L25 (revolve) + piastra 70×50×5 foro Ø16. Percorso chat UI (Proponi + Esegui):
+
+```powershell
+node scripts\chat-boccola-flangia-ui.mjs
+```
+
+Replay (pausa 5 s):
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\boccola-flangia16\boccola.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\boccola-flangia16\piastra.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\boccola-flangia16\assieme.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\boccola-flangia16\tavola.json"
+```
+
 Piastra 80×50×6 + cilindro Ø20 h30. Percorso chat UI (Proponi + Esegui):
 
 ```powershell

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "PiastraForo16",
+    "attachToActive": false,
+    "savePath": "CAD/PiastraForo16.SLDPRT",
+    "snapshotPath": "Export/PiastraForo16.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s3",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 70,
+          "height": 50
+        }
+      ],
+      "dimensions": [
+        {
+          "from": [
+            -35,
+            0
+          ],
+          "to": [
+            35,
+            0
+          ],
+          "value": 70,
+          "label": "W"
+        },
+        {
+          "from": [
+            0,
+            -25
+          ],
+          "to": [
+            0,
+            25
+          ],
+          "value": 50,
+          "label": "H"
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketch": "s3",
+      "depth": 5,
+      "merge": false
+    },
+    {
+      "id": "s4",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "circle",
+          "cx": 0,
+          "cy": 0,
+          "diameter": 16
+        }
+      ],
+      "dimensions": [
+        {
+          "from": [
+            0,
+            0
+          ],
+          "to": [
+            8,
+            0
+          ],
+          "value": 8,
+          "label": "r_foro"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "cut",
+      "sketch": "s4",
+      "throughAll": true
+    }
+  ]
+}
