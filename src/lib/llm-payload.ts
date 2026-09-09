@@ -187,12 +187,17 @@ export function interpretFromLlmText(
   const payload = payloadPair.doc
   let jobOut = jobDocs && jobDocs.length > 1 ? jobDocs : undefined
   if (jobOut) fillKitDefaults(jobOut)
-  for (const d of jobOut ?? [payload]) ensureCadInvariants(d)
-  const summaryOut =
+  for (const d of jobOut ?? [payload]) {
+    fixDocumentSpelling(d)
+    ensureCadInvariants(d)
+  }
+  const summaryOut = decorateSummary(
     summary ||
-    (jobOut
-      ? `Kit ${jobOut.length} documenti: ${jobOut.map((d) => d.document.name).join(", ")}.`
-      : `Modello con ${payload.operations.length} operazioni.`)
+      (jobOut
+        ? `Kit ${jobOut.length} documenti: ${jobOut.map((d) => d.document.name).join(", ")}.`
+        : `Modello con ${payload.operations.length} operazioni.`),
+    jobOut ?? [payload],
+  )
 
   return {
     result: {
@@ -275,6 +280,36 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
     operations,
   }
   return { doc, dropped }
+}
+
+/** Assemie/Assemblee → Assieme in names and paths. */
+function spellAssieme(value: string): string {
+  return value.replace(/Assemie/gi, "Assieme").replace(/Assemblee/gi, "Assieme")
+}
+
+function fixDocumentSpelling(doc: SolidWorksDocumentPayload) {
+  doc.document.name = spellAssieme(doc.document.name)
+  if (doc.document.savePath) doc.document.savePath = spellAssieme(doc.document.savePath)
+  if (doc.document.snapshotPath) doc.document.snapshotPath = spellAssieme(doc.document.snapshotPath)
+  if (doc.document.openPath) doc.document.openPath = spellAssieme(doc.document.openPath)
+  for (const op of doc.operations) {
+    const rec = op as CadOperation & { path?: string; model?: string; component1?: string; component2?: string }
+    if (typeof rec.path === "string") rec.path = spellAssieme(rec.path)
+    if (typeof rec.model === "string") rec.model = spellAssieme(rec.model)
+    if (typeof rec.component1 === "string") rec.component1 = spellAssieme(rec.component1)
+    if (typeof rec.component2 === "string") rec.component2 = spellAssieme(rec.component2)
+  }
+}
+
+function decorateSummary(summary: string, docs: SolidWorksDocumentPayload[]): string {
+  let text = spellAssieme(summary)
+  const through = docs.some((d) =>
+    d.operations.some((op) => op.type === "cut" && "throughAll" in op && op.throughAll === true),
+  )
+  if (through && !/passante|through\s*hole/i.test(text)) {
+    text = `${text} Foro passante (throughAll) sul taglio, visibile nel piano.`
+  }
+  return text
 }
 
 /** Loop agentico: mate senza verify, o tavola senza iso, non basta lo step COM ok. */

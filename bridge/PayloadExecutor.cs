@@ -294,7 +294,6 @@ internal sealed partial class PayloadExecutor
     {
         ExitOpenSketchesOnAllDocuments(swApp);
         EnsureCartiglioFileLocations();
-        CloseIdleDocuments(swApp, keepAssemblies: true);
         ModelDoc2? doc = null;
         foreach (var template in TemplateLocator.ExistingDrawingTemplates())
         {
@@ -1258,7 +1257,8 @@ internal sealed partial class PayloadExecutor
         var a = e1.ToLowerInvariant();
         var b = e2.ToLowerInvariant();
         var oppositeFaces = (IsTopEntity(a) && IsBottomEntity(b)) || (IsBottomEntity(a) && IsTopEntity(b));
-        if (kind is "coincident" && oppositeFaces)
+        var shoulderFace = IsShoulderEntity(a) || IsShoulderEntity(b);
+        if (kind is "coincident" && (oppositeFaces || shoulderFace))
         {
             return
             [
@@ -1286,6 +1286,9 @@ internal sealed partial class PayloadExecutor
 
     private static bool IsBottomEntity(string e) =>
         e is "bottom" or "facebottom" or "lower" or "faccia-inf" or "facciainf";
+
+    private static bool IsShoulderEntity(string e) =>
+        e is "pad" or "boss" or "boss-top" or "faccia-boss" or "shoulder" or "spallamento";
 
     private bool SelectMateEntity(
         IAssemblyDoc assy,
@@ -1329,7 +1332,7 @@ internal sealed partial class PayloadExecutor
                    || SelectComponentCylinder(assy, key, append, LooksInner(e, defaultInner: true), selData, targetRadiusM, pickX, pickY, pickZ);
         }
 
-        if (e is "pad" or "boss" or "boss-top" or "faccia-boss")
+        if (IsShoulderEntity(e))
         {
             return SelectComponentPlanarFace(assy, key, wantTop: true, append, selData, preferSmallUpper: true);
         }
@@ -1637,6 +1640,7 @@ internal sealed partial class PayloadExecutor
         var coincident = CountMatesOfType(model, 0);
         var coaxial = false;
         var seated = false;
+        var seatedShoulder = false;
         var pairInfo = "";
         for (var i = 0; i < items.Count; i++)
         {
@@ -1649,10 +1653,20 @@ internal sealed partial class PayloadExecutor
                 var dz = Math.Abs((a[4] + a[5]) / 2 - (b[4] + b[5]) / 2);
                 var aligned = (dx < 3 ? 1 : 0) + (dy < 3 ? 1 : 0) + (dz < 3 ? 1 : 0);
                 var face = FacesTouch(a, b);
+                var plateBox = MinExtent(a) <= MinExtent(b) ? a : b;
+                var otherBox = MinExtent(a) <= MinExtent(b) ? b : a;
+                CapExtents(plateBox, otherBox, out var capAbove, out var capBelow);
+                var shoulder = ShoulderCapSeated(plateBox, otherBox);
+                if (shoulder)
+                {
+                    face = true;
+                    seatedShoulder = true;
+                }
+
                 if (face) seated = true;
                 if (aligned >= 2) coaxial = true;
                 pairInfo =
-                    $"{items[i].Name}/{items[j].Name} dX={dx:0.02} dY={dy:0.02} dZ={dz:0.02} aligned={aligned} face={face}";
+                    $"{items[i].Name}/{items[j].Name} dX={dx:0.02} dY={dy:0.02} dZ={dz:0.02} aligned={aligned} face={face} capAbove={capAbove:0.02} capBelow={capBelow:0.02}";
             }
         }
 
@@ -1662,9 +1676,14 @@ internal sealed partial class PayloadExecutor
         var coincidentOk = coincident >= 1 && seated;
         string rule;
         bool ok;
-        if (wantConcentric)
+        if (wantConcentric && wantCoincident)
         {
-            // Perno/boccola: concentric richiesto dal job. Coincident faccia è extra.
+            seated = seatedShoulder;
+            ok = concentric >= 1 && coaxial && seatedShoulder;
+            rule = "concentric+seated";
+        }
+        else if (wantConcentric)
+        {
             ok = concentricOk;
             rule = "concentric";
         }
@@ -1710,6 +1729,37 @@ internal sealed partial class PayloadExecutor
         }
 
         return false;
+    }
+
+    private static double MinExtent(double[] b)
+    {
+        var dx = Math.Abs(b[1] - b[0]);
+        var dy = Math.Abs(b[3] - b[2]);
+        var dz = Math.Abs(b[5] - b[4]);
+        return Math.Min(dx, Math.Min(dy, dz));
+    }
+
+    /// <summary>
+    /// Spallamento ØDs×ts seduto sulla faccia della piastra, gambo nel foro:
+    /// il cap oltre la piastra è ~ts (4–10 mm) e l'albero attraversa lo spessore.
+    /// </summary>
+    private static bool ShoulderCapSeated(double[] plate, double[] shaft)
+    {
+        CapExtents(plate, shaft, out var above, out var below);
+        var capTop = above > 3.5 && above < 12 && below > 4;
+        var capBot = below > 3.5 && below < 12 && above > 4;
+        return capTop || capBot;
+    }
+
+    private static void CapExtents(double[] plate, double[] shaft, out double above, out double below)
+    {
+        var axis = ThicknessAxis(plate);
+        var pLo = Math.Min(plate[axis], plate[axis + 1]);
+        var pHi = Math.Max(plate[axis], plate[axis + 1]);
+        var sLo = Math.Min(shaft[axis], shaft[axis + 1]);
+        var sHi = Math.Max(shaft[axis], shaft[axis + 1]);
+        above = sHi - pHi;
+        below = pLo - sLo;
     }
 
     private int CountMatesOfType(ModelDoc2 model, int mateType)
@@ -1914,13 +1964,30 @@ internal sealed partial class PayloadExecutor
         if (wantTop && preferSmallUpper)
         {
             var tMin = cands.Min(c => c.T);
-            var upper = cands.Where(c => c.T > tMin + 0.0004 && c.Area > 2e-5).ToList();
-            if (upper.Count == 0) upper = cands.Where(c => c.T > tMin + 0.0004).ToList();
-            if (upper.Count == 0) upper = cands;
-            var pick = upper.OrderBy(c => c.Area).ThenByDescending(c => c.T).First();
-            best = pick.Face;
-            bestT = pick.T;
-            bestArea = pick.Area;
+            var tMax = cands.Max(c => c.T);
+            // Faccia anulare dello spallamento: tra l'estremo del cap e l'estremo del gambo,
+            // non il disco Ø10 in cima all'albero.
+            var annular = cands
+                .Where(c => c.T > tMin + 0.0004 && c.T < tMax - 0.0004 && c.Area > 2e-5)
+                .OrderBy(c => c.Area)
+                .ToList();
+            if (annular.Count > 0)
+            {
+                var pickA = annular.First();
+                best = pickA.Face;
+                bestT = pickA.T;
+                bestArea = pickA.Area;
+            }
+            else
+            {
+                var upper = cands.Where(c => c.T > tMin + 0.0004 && c.Area > 2e-5).ToList();
+                if (upper.Count == 0) upper = cands.Where(c => c.T > tMin + 0.0004).ToList();
+                if (upper.Count == 0) upper = cands;
+                var pick = upper.OrderBy(c => c.Area).ThenByDescending(c => c.T).First();
+                best = pick.Face;
+                bestT = pick.T;
+                bestArea = pick.Area;
+            }
         }
         else if (wantTop)
         {
@@ -2013,6 +2080,31 @@ internal sealed partial class PayloadExecutor
 
     private bool MateGeometryOk(IAssemblyDoc assy, string kind, string c1, string e1, string c2, string e2)
     {
+        if (kind is "coincident")
+        {
+            var b1 = FindBox(assy, c1);
+            var b2 = FindBox(assy, c2);
+            if (b1 is not null && b2 is not null)
+            {
+                var plateBox = MinExtent(b1) <= MinExtent(b2) ? b1 : b2;
+                var otherBox = MinExtent(b1) <= MinExtent(b2) ? b2 : b1;
+                if (IsShoulderEntity(e1.ToLowerInvariant()) || IsShoulderEntity(e2.ToLowerInvariant()))
+                {
+                    var seated = ShoulderCapSeated(plateBox, otherBox);
+                    if (!seated)
+                    {
+                        CapExtents(plateBox, otherBox, out var above, out var below);
+                        Console.WriteLine(
+                            $"[{DateTime.Now:HH:mm:ss}] mateGeom spallamento non seduto capAbove={above:0.02} capBelow={below:0.02}");
+                    }
+
+                    return seated;
+                }
+
+                return FacesTouch(b1, b2) || ShoulderCapSeated(plateBox, otherBox);
+            }
+        }
+
         var plate = FindBox(assy, "PiastraBase");
         var pin = FindBox(assy, "Perno");
         var wash = FindBox(assy, "Rondella");
@@ -2764,6 +2856,7 @@ internal sealed partial class PayloadExecutor
         }
 
         CloseForeignDocAtPath(path, model);
+        TryDeleteExistingSaveTarget(path);
 
         for (var attempt = 1; attempt <= 3; attempt++)
         {
@@ -2866,6 +2959,21 @@ internal sealed partial class PayloadExecutor
     private static bool IsRpcDisconnected(string detail) =>
         detail.Contains("80010108", StringComparison.OrdinalIgnoreCase)
         || detail.Contains("RPC_E_DISCONNECTED", StringComparison.OrdinalIgnoreCase);
+
+    private void TryDeleteExistingSaveTarget(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            File.SetAttributes(path, FileAttributes.Normal);
+            File.Delete(path);
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] OK Unlink — {Path.GetFileName(path)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Unlink {Path.GetFileName(path)}: {ex.Message}");
+        }
+    }
 
     private void CloseForeignDocAtPath(string path, ModelDoc2? keep)
     {
@@ -3084,7 +3192,7 @@ internal sealed partial class PayloadExecutor
         if (type == (int)swDocumentTypes_e.swDocASSEMBLY
             || type == (int)swDocumentTypes_e.swDocDRAWING)
         {
-            CloseIdleDocuments(swApp, keepAssemblies: type == (int)swDocumentTypes_e.swDocASSEMBLY, keepTitle: title);
+            // Lascia assieme e tavola aperti: niente CloseDoc extra, GUI viva.
             return;
         }
 
