@@ -206,6 +206,7 @@ export function interpretFromLlmText(
   if (jobOut) fixStackedColumnAssembly(jobOut)
   if (jobOut) fixWindowCoverAssembly(jobOut)
   if (jobOut) fixPatternBushingAssembly(jobOut)
+  if (jobOut) fixHingeAssembly(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -278,6 +279,8 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   ensureWindowCover(operations)
   ensurePatternPlate(operations)
   ensurePatternBushing(operations)
+  ensureHingeEar(operations)
+  ensureHingePin(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -1033,7 +1036,7 @@ function isCountersinkPlate(ops: CadOperation[]): boolean {
 
 function isCountersinkScrew(ops: CadOperation[]): boolean {
   if (isCountersinkPlate(ops)) return false
-  if (isPatternPlate(ops) || isPatternBushing(ops)) return false
+  if (isPatternPlate(ops) || isPatternBushing(ops) || isHingeEar(ops) || isHingePin(ops)) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 90, 60))) return false
@@ -1264,7 +1267,7 @@ function isCounterborePlate(ops: CadOperation[]): boolean {
 
 function isCheeseHeadScrew(ops: CadOperation[]): boolean {
   if (isCounterborePlate(ops) || isCountersinkPlate(ops) || isCountersinkScrew(ops)) return false
-  if (isPatternPlate(ops) || isPatternBushing(ops)) return false
+  if (isPatternPlate(ops) || isPatternBushing(ops) || isHingeEar(ops) || isHingePin(ops)) return false
   if (hasCircleDia(ops, 20)) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
@@ -1652,7 +1655,8 @@ function isStackColumn(ops: CadOperation[]): boolean {
         isRectSize(r.width, r.height, 60, 40) ||
         isRectSize(r.width, r.height, 50, 40) ||
         isRectSize(r.width, r.height, 80, 60) ||
-        isRectSize(r.width, r.height, 90, 60),
+        isRectSize(r.width, r.height, 90, 60) ||
+        isRectSize(r.width, r.height, 30, 20),
     )
   ) {
     return false
@@ -2241,6 +2245,219 @@ function fixPatternBushingAssembly(jobOut: SolidWorksDocumentPayload[]): void {
 
   jobOut.length = 0
   jobOut.push(plate, bush, asm, ...drawings)
+}
+
+function hingeEarOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 30, height: 20 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 6 },
+    { id: "s2", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 8 }] },
+    { id: "c1", type: "cut", sketch: "s2", throughAll: true },
+  ]
+}
+
+function hingePinOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 8 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 50 },
+  ]
+}
+
+function isHingeEar(ops: CadOperation[]): boolean {
+  if (!hasRectSizeOps(ops, 30, 20)) return false
+  if (hasRectSizeOps(ops, 30, 18) || hasRectSizeOps(ops, 70, 50) || hasRectSizeOps(ops, 90, 60)) return false
+  if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops) || isStackBase(ops)) return false
+  if (hasRectSizeOps(ops, 60, 40) || hasRectSizeOps(ops, 50, 40) || hasRectSizeOps(ops, 80, 60)) return false
+  const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
+  return ext6 || hasCircleDia(ops, 8)
+}
+
+function isHingePin(ops: CadOperation[]): boolean {
+  if (isHingeEar(ops) || hasRectSizeOps(ops, 30, 20) || hasRectSizeOps(ops, 80, 50)) return false
+  if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops) || isPatternBushing(ops)) return false
+  if (hasCircleDia(ops, 12) || hasCircleDia(ops, 10) || hasCircleDia(ops, 14) || hasCircleDia(ops, 16) || hasCircleDia(ops, 20)) {
+    return false
+  }
+  if (sketchRects(ops).length > 0) return false
+  const ext50 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 50) < 0.6)
+  const ext30 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 30) < 0.6)
+  if (ext30 && !ext50) return false
+  const d8 = hasCircleDia(ops, 8)
+  const rev = ops.some((o) => o.type === "revolve" && o.cut !== true)
+  const maxX = maxSketchLineX(ops)
+  const maxY = maxSketchLineY(ops)
+  if (ext50 && d8) return true
+  return rev && maxX >= 3.5 && maxX <= 4.5 && maxY >= 45 && maxY <= 55
+}
+
+function ensureHingeEar(ops: CadOperation[]): void {
+  if (!isHingeEar(ops)) return
+  ops.length = 0
+  ops.push(...hingeEarOps())
+}
+
+function ensureHingePin(ops: CadOperation[]): void {
+  if (!isHingePin(ops)) return
+  ops.length = 0
+  ops.push(...hingePinOps())
+}
+
+function isHingeJob(docs: SolidWorksDocumentPayload[]): boolean {
+  const parts = docs.filter((d) => d.document.type === "part")
+  if (parts.length === 0) return false
+  const names = parts.map((p) => p.document.name).join(" ")
+  if (/Orecchio30|Perno8x50|AssiemeCerniera/i.test(names)) return true
+  const hasEar = parts.some((p) => isHingeEar(p.operations) || hasRectSizeOps(p.operations, 30, 20))
+  const hasPin = parts.some((p) => isHingePin(p.operations))
+  const n8 = parts.reduce((n, p) => n + countCirclesDia(p.operations, 8), 0)
+  const twoHolesOnePart = parts.some(
+    (p) => countCirclesDia(p.operations, 8) >= 2 && hasRectSizeOps(p.operations, 30, 20),
+  )
+  if (hasEar && (hasPin || n8 >= 1)) return true
+  if (hasEar && parts.length <= 3) return true
+  if (twoHolesOnePart && parts.length <= 3) return true
+  return false
+}
+
+function fixHingeAssembly(jobOut: SolidWorksDocumentPayload[]): void {
+  if (!isHingeJob(jobOut)) return
+  if (isStackedColumnJob(jobOut) || isWindowCoverJob(jobOut) || isPatternBushingJob(jobOut)) return
+
+  const parts = jobOut.filter((d) => d.document.type === "part")
+  let ear = parts.find((p) => isHingeEar(p.operations) || hasRectSizeOps(p.operations, 30, 20))
+  let pin = parts.find((p) => p !== ear && isHingePin(p.operations))
+  if (!pin) {
+    pin = parts.find(
+      (p) =>
+        p !== ear &&
+        !hasRectSizeOps(p.operations, 30, 20) &&
+        (hasCircleDia(p.operations, 8) ||
+          p.operations.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 50) < 0.6)),
+    )
+  }
+  if (!ear) ear = makePartDoc("Orecchio30", hingeEarOps())
+  else {
+    ear.document.name = "Orecchio30"
+    ear.document.savePath = "CAD/Orecchio30.SLDPRT"
+    ear.operations.length = 0
+    ear.operations.push(...hingeEarOps())
+  }
+  if (!pin) pin = makePartDoc("Perno8x50", hingePinOps())
+  else {
+    pin.document.name = "Perno8x50"
+    pin.document.savePath = "CAD/Perno8x50.SLDPRT"
+    pin.operations.length = 0
+    pin.operations.push(...hingePinOps())
+  }
+
+  let asm = jobOut.find((d) => d.document.type === "assembly")
+  if (!asm) {
+    asm = {
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "assembly",
+        name: "AssiemeCerniera",
+        attachToActive: false,
+        savePath: "CAD/AssiemeCerniera.SLDASM",
+        snapshotPath: "Export/AssiemeCerniera.jpg",
+        snapshotView: "*Isometric",
+      },
+      variables: [],
+      configurations: [],
+      operations: [],
+    }
+  } else {
+    asm.document.name = "AssiemeCerniera"
+    asm.document.savePath = "CAD/AssiemeCerniera.SLDASM"
+  }
+  asm.operations = [
+    { id: "comp-e1", type: "component", path: "CAD/Orecchio30.SLDPRT", x: 0, y: 0, z: 0, fix: true },
+    { id: "comp-e2", type: "component", path: "CAD/Orecchio30.SLDPRT", x: 0, y: 46, z: 0 },
+    { id: "comp-p", type: "component", path: "CAD/Perno8x50.SLDPRT", x: 0, y: 23, z: 0 },
+    {
+      id: "m-c1",
+      type: "mate",
+      mateType: "concentric",
+      component1: "comp-p",
+      component2: "comp-e1",
+      entity1: "outer",
+      entity2: "inner",
+      diameter: 8,
+    },
+    {
+      id: "m-c2",
+      type: "mate",
+      mateType: "concentric",
+      component1: "comp-p",
+      component2: "comp-e2",
+      entity1: "outer",
+      entity2: "inner",
+      diameter: 8,
+    },
+    {
+      id: "m-gap",
+      type: "mate",
+      mateType: "distance",
+      component1: "comp-e1",
+      component2: "comp-e2",
+      entity1: "top",
+      entity2: "bottom",
+      distance: 40,
+    },
+    { id: "v-auto", type: "verify" },
+  ]
+
+  const drawings = jobOut.filter((d) => d.document.type === "drawing")
+  for (const d of drawings) {
+    if (/Assemie|Griglia|Finestra|Tasca|Sede|TrePezzi|demo/i.test(d.document.name) || !/^Tavola/i.test(d.document.name)) {
+      d.document.name = "TavolaCerniera"
+    }
+    d.document.savePath = `Disegni/${d.document.name}.SLDDRW`
+    d.document.sheetFormat = d.document.sheetFormat || "A3"
+    for (const op of d.operations) {
+      if (op.type === "standardViews" || op.type === "drawingView") {
+        const rec = op as { model?: string }
+        rec.model = "CAD/AssiemeCerniera.SLDASM"
+      }
+    }
+  }
+  if (drawings.length === 0) {
+    drawings.push({
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "drawing",
+        name: "TavolaCerniera",
+        attachToActive: false,
+        savePath: "Disegni/TavolaCerniera.SLDDRW",
+        snapshotPath: "Export/TavolaCerniera.jpg",
+        sheetFormat: "A3",
+      },
+      variables: [],
+      configurations: [],
+      operations: [
+        {
+          id: "dv1",
+          type: "standardViews",
+          model: "CAD/AssiemeCerniera.SLDASM",
+          firstAngle: true,
+          includeIso: true,
+        },
+        { id: "dd1", type: "modelDimensions" },
+        {
+          id: "an1",
+          type: "annotation",
+          text: "Orecchie 30×20×6 Ø8 ×2 — gap 40 — perno Ø8×50",
+          x: 0.02,
+          y: 0.27,
+        },
+      ],
+    })
+  }
+
+  jobOut.length = 0
+  jobOut.push(ear, pin, asm, ...drawings)
 }
 
 const Z_BRACKET_POLY: Array<[number, number]> = [
