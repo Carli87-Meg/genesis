@@ -418,6 +418,7 @@ function normalizeOp(raw: unknown, index: number): CadOperation | null {
 function inferOpType(rec: Record<string, unknown>): string {
   if (Array.isArray(rec.contours) || rec.plane) return "sketch"
   if (rec.throughAll === true) return "cut"
+  if (rec.cut === true) return "cut"
   if (typeof rec.depth === "number" && rec.sketch) return "extrude"
   if (typeof rec.depth === "number") return rec.cut ? "cut" : "extrude"
   if (typeof rec.diameter === "number") return "hole"

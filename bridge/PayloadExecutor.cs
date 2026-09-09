@@ -1735,9 +1735,8 @@ internal sealed partial class PayloadExecutor
         bool ok;
         if (wantConcentric && wantCoincident)
         {
-            seated = seatedShoulder;
-            ok = concentric >= 1 && coaxial && seatedShoulder;
-            rule = "concentric+seated";
+            ok = concentric >= 1 && coaxial && (seatedShoulder || seated);
+            rule = seatedShoulder ? "concentric+seated" : "concentric+coincident+seated";
         }
         else if (wantCoincident && wantPerpendicular)
         {

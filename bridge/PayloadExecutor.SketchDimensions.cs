@@ -500,6 +500,30 @@ internal sealed partial class PayloadExecutor
         return list;
     }
 
+    /// <summary>
+    /// Schizzo di soli cerchi decentrati (fori): FullyDefineSketch può agganciarli
+    /// a spigoli esistenti e cambiare Ø. Quote diametro/offset senza FullyDefine.
+    /// Coordinate schizzo in metri.
+    /// </summary>
+    private static bool IsActiveSketchOffCenterCircles(ModelDoc2 model)
+    {
+        var segs = ActiveSketchSegments(model);
+        if (segs.Count == 0) return false;
+        var anyOff = false;
+        foreach (var s in segs)
+        {
+            int t;
+            try { t = s.GetType(); }
+            catch { return false; }
+            if (t != (int)swSketchSegments_e.swSketchARC && t != (int)swSketchSegments_e.swSketchELLIPSE)
+                return false;
+            if (!TryCircle(s, out var cx, out var cy, out _)) return false;
+            if (Math.Abs(cx) > 5e-4 || Math.Abs(cy) > 5e-4) anyOff = true;
+        }
+
+        return anyOff;
+    }
+
     private static List<ISketchSegment> ActiveSketchSegments(ModelDoc2 model)
     {
         try
@@ -674,7 +698,18 @@ internal sealed partial class PayloadExecutor
                 RevealAllDisplayDimensions(model);
                 var n = CountDimsOn(feat);
                 if (n == 0)
-                    n = QuoteActiveSketch(model, sketchMgr);
+                {
+                    if (IsActiveSketchOffCenterCircles(model))
+                    {
+                        n = DimensionAllSegments(model) + DimensionCentersFromOrigin(model);
+                        RevealAllDisplayDimensions(model);
+                        Step("QuoteActiveSketch", true, "skip FullyDefineSketch (fori decentrati)");
+                    }
+                    else
+                    {
+                        n = QuoteActiveSketch(model, sketchMgr);
+                    }
+                }
                 CaptureQuotedSketch(model);
                 TryExitOpenSketchesAndRebuild(model, forceRebuild: false);
                 Step("QuoteProfile", n > 0, $"{feat.Name}: {n} quote");
