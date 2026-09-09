@@ -22,10 +22,12 @@ Oppure in due terminali:
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\verkghost.dll
+dotnet bridge\bin\Release\net8.0-windows\swiax7k2.dll
 ```
 
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `verkghost.dll`; `dotnet …\verkghost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `swiax7k2.dll`; `dotnet …\swiax7k2.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+
+Prima di ogni tavola, snapshot 3D e `CloseDoc` il bridge esce da «Modifica schizzo» (`InsertSketch(false)` solo se lo schizzo è aperto) e fa `EditRebuild3` + `ForceRebuild3`.
 
 Il cartiglio **PESO Kg** usa `SW-Mass` in chilogrammi (non grammi MMGS). Il bridge imposta le unità di massa a kg e scrive le proprietà `PESO` / `Peso` / `Massa` prima del SaveAs.
 

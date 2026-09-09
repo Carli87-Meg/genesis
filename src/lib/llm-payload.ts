@@ -6,6 +6,7 @@ const OP_TYPES = new Set([
   "extrude",
   "cut",
   "revolve",
+  "sweep",
   "hole",
   "fillet",
   "chamfer",
@@ -39,6 +40,11 @@ const TYPE_ALIAS: Record<string, string> = {
   revolution: "revolve",
   revolve2: "revolve",
   rivoluzione: "revolve",
+  sweep: "sweep",
+  "boss-sweep": "sweep",
+  bosssweep: "sweep",
+  percorso: "sweep",
+  loftsweep: "sweep",
   schizzo: "sketch",
   sketch: "sketch",
   foro: "hole",
@@ -381,6 +387,7 @@ function inferOpType(rec: Record<string, unknown>): string {
   if (typeof rec.depth === "number") return rec.cut ? "cut" : "extrude"
   if (typeof rec.diameter === "number") return "hole"
   if (typeof rec.angle === "number") return "revolve"
+  if (rec.profile && rec.path) return "sweep"
   return ""
 }
 
@@ -404,7 +411,14 @@ function normalizeContour(raw: unknown): unknown {
     const height = numish(rec.height) ?? 0
     return { ...rest, kind: "rectangle", cx, cy, width, height }
   }
-  if (kind === "circ" || kind === "circle" || kind === "arc") {
+  if (kind === "circ" || kind === "circle") {
+    const diameter = numish(rec.diameter) ?? (numish(rec.radius) != null ? numish(rec.radius)! * 2 : 0)
+    return { ...rest, kind: "circle", cx, cy, diameter }
+  }
+  if (kind === "arc" || kind === "arco") {
+    if (numish(rec.x1) != null && numish(rec.x3) != null) {
+      return { ...rest, kind: "arc" }
+    }
     const diameter = numish(rec.diameter) ?? (numish(rec.radius) != null ? numish(rec.radius)! * 2 : 0)
     return { ...rest, kind: "circle", cx, cy, diameter }
   }
@@ -451,14 +465,21 @@ function omitKeys(rec: Record<string, unknown>, keys: string[]): Record<string, 
 
 function linkSketches(ops: CadOperation[]) {
   let lastSketch = ""
+  const sketchIds: string[] = []
   for (const op of ops) {
     if (op.type === "sketch") {
       lastSketch = op.id
+      sketchIds.push(op.id)
       continue
     }
     if ((op.type === "extrude" || op.type === "cut" || op.type === "revolve") && lastSketch) {
       const rec = op as CadOperation & { sketch?: string }
       if (!rec.sketch) rec.sketch = lastSketch
+    }
+    if (op.type === "sweep") {
+      const rec = op as CadOperation & { path?: string; profile?: string; sketch?: string }
+      if (!rec.path && sketchIds.length >= 1) rec.path = sketchIds[0]
+      if (!rec.profile) rec.profile = rec.sketch || (sketchIds.length >= 2 ? sketchIds[1] : lastSketch)
     }
   }
 }

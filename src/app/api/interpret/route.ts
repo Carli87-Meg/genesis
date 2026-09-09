@@ -36,8 +36,8 @@ schemaVersion is the number 2. units is always "mm".
 Every operation MUST have a string field "type". Never { "sketch": { ... } } as the only key.
 Sketch origin = plate center. rectangle/circle use cx,cy (not centerX, not position).
 Planes: Front|Top|Right. ISO Italian: Piano superiore = XZ, extrude along +Y.
-Ops: sketch (plane, contours rectangle|circle|line), extrude (sketch id, depth mm, merge),
-cut (sketch id, throughAll true for holes), revolve, hole, fillet, chamfer, shell, pattern,
+Ops: sketch (plane, contours rectangle|circle|line|arc), extrude (sketch id, depth mm, merge),
+cut (sketch id, throughAll true for holes), revolve, sweep (profile sketch id, path sketch id), hole, fillet, chamfer, shell, pattern,
 component (path, x,y,z, fix), mate (mateType coincident|concentric — never "subtype", component1/2, entity1/2 inner|outer|top|bottom|pad, diameter mm),
 After mates in an assembly always append {"id":"v1","type":"verify"} — COM step ok is not proof of pose.
 sheetFormat (format A3|A2), standardViews (model: assembly or part savePath, firstAngle true, includeIso true),
@@ -72,6 +72,7 @@ U-handle height h on a lid: sketch on Front two legs + one top bar (section 3–
 C-profile / profilo a C / C-channel H×B×t, length L: NOT a flat rectangle. Do NOT sketch a thin t×H rectangle on Front (FullyDefineSketch result=6, 0 dimensions, extrude FAIL). Web: Right plane rectangle L×H, extrude depth=t. Flanges: Front (B-t)×t at both ends of the web (inner edge flush with web inner face), extrude depth=L merge true. Holes on the dorso/web: sketch on Right, throughAll. Never emit an 80×40 rectangle extruded L.
 Turned / rivoluzione / boccola / bushing / flanged bushing / albero / shaft (except the L-bracket kit BoccolaGuida, which stays two circles extruded 12 mm): MUST emit type "revolve" (FeatureRevolve2). NEVER stacked extrudes of concentric circles (that is not a revolve). Sketch on Front: (1) construction centerline on the Y axis {"kind":"line","x1":0,"y1":0,"x2":0,"y2":L,"construction":true}; (2) closed half-section on +X as connected lines — radii = Ø/2, do not cross the axis, no circles for the body. Then {"type":"revolve","sketch":"s1","angle":360}.
 Flanged bushing Øext D, Øint d, length L (overall, flange included), flange ØDf thick tf: ri=d/2, rb=D/2, rf=Df/2. Closed loop: (ri,0)-(rf,0)-(rf,tf)-(rb,tf)-(rb,L)-(ri,L) back to (ri,0). Example D=30 d=12 L=40 Df=50 tf=5 → (6,0)-(25,0)-(25,5)-(15,5)-(15,40)-(6,40). Name BoccolaFlangiata, not BoccolaGuida. Flange holes: NEW sketch on Top after the revolve, 4 circles Ø on PCD≈(D+Df)/2 (r=20 for 30/50), cut throughAll.
+Tube / tubo / pipe / percorso / sweep / piegato (not the L-bracket kit): MUST emit type "sweep" (InsertProtrusionSwept / FeatureSweep). NEVER three extruded cylinders or three revolves joined. Two sketches then sweep: (1) path on Front — U width W height H opening down as connected lines (-W/2,0)-(-W/2,H)-(W/2,H)-(W/2,0), or a 3-point arc (-W/2,0)-(0,H)-(W/2,0); (2) profile on Top at the path start: concentric circles Øext and Øint=Øext-2*t, cx=-W/2, cy=0. Then {"type":"sweep","profile":"s2","path":"s1"}. Example: tubo Ø20 spessore 2, U 80×40 → path Front (-40,0)-(-40,40)-(40,40)-(40,0); profile Top Ø20 and Ø16 at (-40,0). Name TuboU.
 Asola/slot W×H: cut a rectangle W×H (optionally two ØH circles at the ends). M4 clearance Ø4.5, M6 Ø6.6 unless specified.
 job = each unique part, then assembly if 2+ parts, then drawing if tavola/A3/Cartiglio_CM is asked. After mates, verify. Drawing: sheetFormat A3 Cartiglio_CM, standardViews.model = the assembly (or part) savePath.`
 

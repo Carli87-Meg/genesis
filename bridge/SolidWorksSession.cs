@@ -177,7 +177,8 @@ internal sealed class SolidWorksSession
 
                     try
                     {
-                        _app.CloseDoc(t);
+                        PayloadExecutor.TryExitOpenSketchesAndRebuild(d, forceRebuild: true);
+                        _app!.CloseDoc(t);
                         closed.Add(t);
                     }
                     catch

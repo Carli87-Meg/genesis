@@ -676,15 +676,17 @@ internal sealed partial class PayloadExecutor
                 if (n == 0)
                     n = QuoteActiveSketch(model, sketchMgr);
                 CaptureQuotedSketch(model);
-                sketchMgr.InsertSketch(false);
+                TryExitOpenSketchesAndRebuild(model, forceRebuild: false);
                 Step("QuoteProfile", n > 0, $"{feat.Name}: {n} quote");
             }
             catch (Exception ex)
             {
                 Step("QuoteProfile", false, $"{feat.Name}: {FormatEx(ex)}");
-                try { sketchMgr.InsertSketch(false); } catch { /* ignore */ }
+                TryExitOpenSketchesAndRebuild(model, forceRebuild: false);
             }
         }
+
+        TryExitOpenSketchesAndRebuild(model, forceRebuild: false);
     }
 
     private static IEnumerable<Feature> WalkFeatures(ModelDoc2 model)

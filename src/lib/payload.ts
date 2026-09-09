@@ -11,6 +11,15 @@ export type SketchContour =
       y2: number
       construction?: boolean
     }
+  | {
+      kind: "arc"
+      x1: number
+      y1: number
+      x2: number
+      y2: number
+      x3: number
+      y3: number
+    }
 
 export type CadOperation =
   | {
@@ -43,6 +52,13 @@ export type CadOperation =
       name?: string
       sketch: string
       angle: number
+    }
+  | {
+      id: string
+      type: "sweep"
+      name?: string
+      profile: string
+      path: string
     }
   | {
       id: string
@@ -272,6 +288,8 @@ export function opLabel(op: CadOperation): string {
       return op.throughAll ? "Taglio passante" : `Taglio ${op.depth ?? ""} mm`
     case "revolve":
       return `Rivoluzione ${op.angle}°`
+    case "sweep":
+      return `Sweep ${op.profile} lungo ${op.path}`
     case "hole":
       return `Foro Ø${op.diameter}`
     case "fillet":

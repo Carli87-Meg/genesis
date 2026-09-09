@@ -39,9 +39,11 @@ internal sealed partial class PayloadExecutor
             payload.Document.SnapshotPath = SwPaths.Resolve(payload.Document.SnapshotPath);
         _sketchStillPath = payload.Document.SnapshotPath;
 
+        ModelDoc2? live = null;
         try
         {
             var model = OpenDocument(swApp, payload.Document);
+            live = model;
             if (model is null)
             {
                 Step("OpenDocument", false, "ActiveDoc è null dopo NewDocument/GetObject");
@@ -77,6 +79,7 @@ internal sealed partial class PayloadExecutor
             });
             if (!onlyPrefs)
             {
+                ExitOpenSketchesAndRebuild(model);
                 try
                 {
                     model.ForceRebuild3(true);
@@ -89,6 +92,7 @@ internal sealed partial class PayloadExecutor
 
                 EnableVisibleDimensions(model);
                 QuoteAllProfileFeatures(model);
+                ExitOpenSketchesAndRebuild(model);
                 ApplyMassUnitsAndPeso(model);
                 Thread.Sleep(400);
             }
@@ -116,11 +120,20 @@ internal sealed partial class PayloadExecutor
             });
             Step("DisplayDimensions", !hadSketch || dimCount > 0, $"{dimCount} quote visibili");
             SnapshotQuotedSketch(model, payload.Document);
+            ExitOpenSketchesAndRebuild(model);
             CloseAfterExecute(swApp, model);
             return (_steps, features, title, docType, saved, snap);
         }
         finally
         {
+            try { if (live is not null) TryExitOpenSketchesAndRebuild(live, forceRebuild: true); }
+            catch { /* doc già chiuso */ }
+            try
+            {
+                if (swApp.ActiveDoc is ModelDoc2 ad)
+                    TryExitOpenSketchesAndRebuild(ad, forceRebuild: true);
+            }
+            catch { /* nessun doc attivo */ }
             try { swApp.CommandInProgress = false; } catch { /* ignore */ }
         }
     }
@@ -277,6 +290,7 @@ internal sealed partial class PayloadExecutor
 
     private ModelDoc2? NewDrawing(ISldWorks swApp, string name)
     {
+        ExitOpenSketchesOnAllDocuments(swApp);
         EnsureCartiglioFileLocations();
         CloseIdleDocuments(swApp, keepAssemblies: true);
         ModelDoc2? doc = null;
@@ -522,6 +536,7 @@ internal sealed partial class PayloadExecutor
             case "extrude": DoExtrude(model, op, units, cut: false); break;
             case "cut": DoExtrude(model, op, units, cut: true); break;
             case "revolve": DoRevolve(model, op); break;
+            case "sweep": DoSweep(model, op); break;
             case "hole": DoHole(model, op, units); break;
             case "fillet":
                 Step("FeatureManager.FeatureFillet", true, "saltato (fillet non affidabile in questa sessione)");
@@ -571,40 +586,46 @@ internal sealed partial class PayloadExecutor
 
         var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
-        try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
-        try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
-        EnableVisibleDimensions(model);
-
-        var contours = op.Field("contours");
-        var n = 0;
-        var dims = 0;
-        if (contours is { ValueKind: JsonValueKind.Array })
+        try
         {
-            foreach (var c in contours.Value.EnumerateArray())
-            {
-                if (DrawContour(model, sketchMgr, c, units, ref dims)) n++;
-            }
-        }
-
-        // FullyDefineSketch (Equal/Concentric/Tangent) snaps flange-hole circles
-        // onto existing revolve edges and changes Ø (Ø6.5 → Ø16.5). Skip it when
-        // every contour is a circle off the origin; still add diameter/offset dims.
-        if (IsOffCenterCircleSketch(contours))
-        {
-            try { sketchMgr.AutoInference = false; } catch { /* ignore */ }
+            try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
+            try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
             EnableVisibleDimensions(model);
-            dims = Math.Max(dims, DimensionAllSegments(model) + DimensionCentersFromOrigin(model));
-            RevealAllDisplayDimensions(model);
-            Step("QuoteActiveSketch", true, "skip FullyDefineSketch (fori decentrati)");
+
+            var contours = op.Field("contours");
+            var n = 0;
+            var dims = 0;
+            if (contours is { ValueKind: JsonValueKind.Array })
+            {
+                foreach (var c in contours.Value.EnumerateArray())
+                {
+                    if (DrawContour(model, sketchMgr, c, units, ref dims)) n++;
+                }
+            }
+
+            // FullyDefineSketch (Equal/Concentric/Tangent) snaps flange-hole circles
+            // onto existing revolve edges and changes Ø (Ø6.5 → Ø16.5). Skip it when
+            // every contour is a circle off the origin; still add diameter/offset dims.
+            if (IsOffCenterCircleSketch(contours))
+            {
+                try { sketchMgr.AutoInference = false; } catch { /* ignore */ }
+                EnableVisibleDimensions(model);
+                dims = Math.Max(dims, DimensionAllSegments(model) + DimensionCentersFromOrigin(model));
+                RevealAllDisplayDimensions(model);
+                Step("QuoteActiveSketch", true, "skip FullyDefineSketch (fori decentrati)");
+            }
+            else
+            {
+                dims = Math.Max(dims, QuoteActiveSketch(model, sketchMgr));
+            }
+            CaptureQuotedSketch(model);
+            RememberLatest(model, op.Id, op.Name);
+            Step("SketchManager", true, $"{n} contorni su {plane}, {dims} quote");
         }
-        else
+        finally
         {
-            dims = Math.Max(dims, QuoteActiveSketch(model, sketchMgr));
+            ExitOpenSketchesAndRebuild(model, forceRebuild: false);
         }
-        CaptureQuotedSketch(model);
-        sketchMgr.InsertSketch(false);
-        RememberLatest(model, op.Id, op.Name);
-        Step("SketchManager", true, $"{n} contorni su {plane}, {dims} quote");
     }
 
     private static bool IsOffCenterCircleSketch(JsonElement? contours)
@@ -660,6 +681,15 @@ internal sealed partial class PayloadExecutor
                     {
                         try { line.ConstructionGeometry = true; } catch { /* ignore */ }
                     }
+                    return true;
+                }
+                case "arc":
+                case "arco":
+                {
+                    sketchMgr.Create3PointArc(
+                        Len(c, "x1", units), Len(c, "y1", units), 0,
+                        Len(c, "x2", units), Len(c, "y2", units), 0,
+                        Len(c, "x3", units), Len(c, "y3", units), 0);
                     return true;
                 }
                 default:
@@ -793,6 +823,82 @@ internal sealed partial class PayloadExecutor
         }
     }
 
+    private void DoSweep(ModelDoc2 model, CadOperation op)
+    {
+        var profileId = op.Str("profile", op.Str("sketch"));
+        var pathId = op.Str("path", op.Str("guide"));
+        if (string.IsNullOrWhiteSpace(profileId) || string.IsNullOrWhiteSpace(pathId))
+        {
+            Step("sweep", false, "servono profile e path (id schizzo)");
+            return;
+        }
+
+        if (!_created.TryGetValue(profileId, out var profileName) || string.IsNullOrWhiteSpace(profileName))
+            profileName = profileId;
+        if (!_created.TryGetValue(pathId, out var pathName) || string.IsNullOrWhiteSpace(pathName))
+            pathName = pathId;
+
+        try { model.ClearSelection2(true); } catch { /* ignore */ }
+        if (!SelectFeatureMark(model, profileName, append: false, mark: 1))
+        {
+            Step("sweep", false, $"profilo non selezionato: {profileName}");
+            return;
+        }
+        if (!SelectFeatureMark(model, pathName, append: true, mark: 4))
+        {
+            Step("sweep", false, $"percorso non selezionato: {pathName}");
+            return;
+        }
+
+        var merge = op.Flag("merge", true);
+        Feature? feat = null;
+        var featMgr = (IFeatureManager)model.FeatureManager;
+        try
+        {
+            feat = featMgr.InsertProtrusionSwept4(
+                false, true, 0, false, false, 0, 0,
+                false, 0, 0, 0, 0,
+                merge, true, true,
+                0, true, false, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Step("InsertProtrusionSwept4", false, FormatEx(ex));
+        }
+
+        if (feat is null)
+        {
+            try
+            {
+                feat = featMgr.InsertProtrusionSwept3(
+                    false, true, 0, false, false, 0, 0,
+                    false, 0, 0, 0, 0,
+                    merge, true, true, 0, true);
+            }
+            catch (Exception ex)
+            {
+                Step("InsertProtrusionSwept3", false, FormatEx(ex));
+            }
+        }
+
+        if (feat is not null) RememberFeature(op.Id, op.Name, feat);
+        Step("FeatureManager.InsertProtrusionSwept", feat is not null, $"profile={profileName} path={pathName}");
+    }
+
+    private static bool SelectFeatureMark(ModelDoc2 model, string name, bool append, int mark)
+    {
+        var feat = FeatureTreeReader.FindByName(model, name);
+        if (feat is null) return false;
+        try
+        {
+            return feat.Select2(append, mark);
+        }
+        catch
+        {
+            return feat.Select2(append, 0);
+        }
+    }
+
     private void DoHole(ModelDoc2 model, CadOperation op, string units)
     {
         var plane = op.Str("plane", "Top");
@@ -804,16 +910,22 @@ internal sealed partial class PayloadExecutor
 
         var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
-        try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
-        try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
-        EnableVisibleDimensions(model);
-        var cx = ToMeters(op.Num("cx"), units);
-        var cy = ToMeters(op.Num("cy"), units);
-        var r = ToMeters(op.Num("diameter", 6), units) / 2;
-        sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
-        QuoteActiveSketch(model, sketchMgr);
-        CaptureQuotedSketch(model);
-        sketchMgr.InsertSketch(false);
+        try
+        {
+            try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
+            try { sketchMgr.DisplayWhenAdded = true; } catch { /* ignore */ }
+            EnableVisibleDimensions(model);
+            var cx = ToMeters(op.Num("cx"), units);
+            var cy = ToMeters(op.Num("cy"), units);
+            var r = ToMeters(op.Num("diameter", 6), units) / 2;
+            sketchMgr.CreateCircleByRadius(cx, cy, 0, r);
+            QuoteActiveSketch(model, sketchMgr);
+            CaptureQuotedSketch(model);
+        }
+        finally
+        {
+            ExitOpenSketchesAndRebuild(model, forceRebuild: false);
+        }
 
         var cutOp = new CadOperation
         {
@@ -1009,6 +1121,12 @@ internal sealed partial class PayloadExecutor
 
             try
             {
+                try
+                {
+                    if (_sw?.GetOpenDocumentByName(full) is ModelDoc2 partDoc)
+                        ExitOpenSketchesAndRebuild(partDoc);
+                }
+                catch { /* ignore */ }
                 _sw?.CloseDoc(Path.GetFileName(full));
                 var aErr = 0;
                 _sw?.ActivateDoc3(model.GetTitle(), false, 0, ref aErr);
@@ -2283,6 +2401,12 @@ internal sealed partial class PayloadExecutor
             catch { /* may already be open */ }
             try
             {
+                if (_sw.GetOpenDocumentByName(modelPath) is ModelDoc2 src)
+                    ExitOpenSketchesAndRebuild(src);
+            }
+            catch { /* ignore */ }
+            try
+            {
                 var aErr = 0;
                 _sw.ActivateDoc3(model.GetTitle(), false, 0, ref aErr);
             }
@@ -2723,6 +2847,7 @@ internal sealed partial class PayloadExecutor
                 return;
             }
 
+            ExitOpenSketchesAndRebuild(other);
             _sw.CloseDoc(otherTitle);
             try { Thread.Sleep(500); } catch { /* ignore */ }
             Step("CloseDoc", true, $"liberato {Path.GetFileName(path)}");
@@ -2738,6 +2863,8 @@ internal sealed partial class PayloadExecutor
         if (string.IsNullOrWhiteSpace(spec.SnapshotPath)) return null;
         try
         {
+            if (_sw is not null) ExitOpenSketchesOnAllDocuments(_sw);
+            else ExitOpenSketchesAndRebuild(model);
             var dest = Path.GetFullPath(spec.SnapshotPath);
             var dir = Path.GetDirectoryName(dest);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -2875,9 +3002,7 @@ internal sealed partial class PayloadExecutor
         }
         finally
         {
-            try { ((ISketchManager)model.SketchManager).InsertSketch(false); }
-            catch { /* already closed */ }
-
+            ExitOpenSketchesAndRebuild(model, forceRebuild: false);
             try { model.ClearSelection2(true); } catch { /* ignore */ }
             try { model.ViewDisplayShaded(); } catch { /* restore */ }
         }
@@ -2928,6 +3053,7 @@ internal sealed partial class PayloadExecutor
         if (string.IsNullOrWhiteSpace(title)) return;
         try
         {
+            ExitOpenSketchesAndRebuild(model);
             swApp.CloseDoc(title);
             Step("CloseDoc", true, title);
         }
@@ -2968,6 +3094,7 @@ internal sealed partial class PayloadExecutor
 
             try
             {
+                ExitOpenSketchesAndRebuild(d);
                 swApp.CloseDoc(t);
                 closed++;
             }
