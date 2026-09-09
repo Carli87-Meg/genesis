@@ -12,24 +12,23 @@ Architettura: **app web esterna** (Next.js) + **processo Windows C#/.NET** in as
 
 ## Avvio locale
 
-Da PowerShell, nella cartella del progetto:
+SolidWorks deve essere **già aperto**. Da PowerShell, nella cartella del progetto:
 
 ```powershell
 .\start-local.ps1
 ```
 
-Oppure in due terminali:
+Questo avvia il bridge e poi `npm run dev`.
+
+- App chat: [http://127.0.0.1:4317](http://127.0.0.1:4317)
+- Bridge HTTP→COM: [http://127.0.0.1:47821/health](http://127.0.0.1:47821/health)
+
+Oppure in due terminali (AppLocker/Smart App Control: non usare l’`.exe` apphost; l’assembly attuale è `swiax1uj.dll`):
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\swiax1ui.dll
+dotnet bridge\bin\Release\net8.0-windows\swiax1uj.dll
 ```
-
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `swiax1ui.dll`; `dotnet …\swiax1ui.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
-
-Prima di ogni tavola, snapshot 3D e `CloseDoc` il bridge esce da «Modifica schizzo» (`InsertSketch(false)` solo se lo schizzo è aperto) e fa `EditRebuild3` + `ForceRebuild3`.
-
-Il cartiglio **PESO Kg** usa `SW-Mass` in chilogrammi (non grammi MMGS). Il bridge imposta le unità di massa a kg e scrive le proprietà `PESO` / `Peso` / `Massa` prima del SaveAs.
 
 ```powershell
 copy .env.example .env.local
@@ -37,10 +36,31 @@ npm install
 npm run dev
 ```
 
-- App: [http://127.0.0.1:4317](http://127.0.0.1:4317)
-- Bridge: [http://127.0.0.1:47821/health](http://127.0.0.1:47821/health)
+### Chat UI (Proponi + Esegui)
 
-«Esegui in SolidWorks» chiama `POST /api/solidworks`, che inoltra al bridge su `SOLIDWORKS_BRIDGE_URL` (o l’URL in Impostazioni).
+1. Apri [http://127.0.0.1:4317](http://127.0.0.1:4317) — header **OpenRouter**, non demo.
+2. **Nuova chat**, scrivi il pezzo in italiano, **Proponi**.
+3. Controlla i nomi (`Assieme*`, mai `Assemie*`) e **Esegui in SolidWorks**.
+4. L’UI fa `POST /api/solidworks` con `{ payload: doc }` per documento. Non usare `curl` sul bridge per questo flusso.
+
+### Output CAD
+
+I file del bridge finiscono in  
+`C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\01_Progetti_Attivi\SolidworksIA\`  
+(`CAD/`, `Disegni/`, `Export/`). Non in ProgramData. Override: `$env:SOLIDWORKS_OUT_DIR`.
+
+### Cartiglio_CM
+
+Le tavole A3 usano **Cartiglio_CM** da CADTM File Locations:  
+`...\03_Risorse_CAD\Cartigli_Template\Cartiglio_CM\PARTE_A3_CM.slddrt`  
+(`PARTE_A2_CM.slddrt` per A2). Il bridge lo antepone alle Sheet Format locations. **Mai copiare il `.slddrt` in ProgramData.**
+
+Prima di ogni tavola/snapshot il bridge esce da «Modifica schizzo» e fa `EditRebuild3` + `ForceRebuild3`. Il cartiglio **PESO Kg** usa `SW-Mass` in chilogrammi.
+
+### Limiti noti
+
+- L’interpret OpenRouter **sbaglia spesso** la geometria (vite/revolve al posto del perno, cubo, due PRT al posto di un merge, schizzo a due cerchi pieni invece di un’asola). I sanitizer in `src/lib/llm-payload.ts` coprono alcuni casi; non coprono tutti.
+- Piastra + boss cilindrico + perno: sanitizer e selezione faccia `top` = corona (T massimo, DLL `swiax1uj`) sono nel repo; la **posa coincidente sulla corona del boss non è chiusa** (estrusione merge nello stesso verso della piastra: corona e faccia piastra risultano coplanari). Prova a mano in SolidWorks.
 
 Esempio più complesso in chat: *Staffa a L 80×50×8 mm, parete 40 mm, boss Ø16, 4 fori Ø6.5, boccola e tavola A3 CM*. L’app manda in sequenza parte, boccola, assieme e tavola. Le tavole usano il formato foglio **Cartiglio_CM** (`PARTE_A3_CM.slddrt` / `PARTE_A2_CM.slddrt`), non un `.drwdot` inesistente. FeatureFillet è saltato di proposito.
 
@@ -165,10 +185,7 @@ curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cubo\tavola.json"
 ```
 
-I file CAD del bridge finiscono in
-`C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\01_Progetti_Attivi\SolidworksIA\`
-(`CAD/`, `Disegni/`, `Export/`). Non in ProgramData. Override: `$env:SOLIDWORKS_OUT_DIR`.
-FeatureFillet è saltato di proposito.
+FeatureFillet è saltato di proposito (raccordi non eseguiti dal bridge).
 
 ## OpenRouter
 

@@ -209,6 +209,7 @@ export function interpretFromLlmText(
   if (jobOut) fixHingeAssembly(jobOut)
   if (jobOut) fixChamferShaftAssembly(jobOut)
   if (jobOut) fixSlotPinAssembly(jobOut)
+  if (jobOut) fixBossPinAssembly(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -2851,6 +2852,222 @@ function fixSlotPinAssembly(jobOut: SolidWorksDocumentPayload[]): void {
           id: "an1",
           type: "annotation",
           text: "Piastra 100×50×8 asola oblunga 40×10 — perno Ø10×20",
+          x: 0.02,
+          y: 0.27,
+        },
+      ],
+    })
+  }
+
+  jobOut.length = 0
+  jobOut.push(plate, pin, asm, ...drawings)
+}
+
+function bossPinPlateOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 80, height: 40 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 6 },
+    { id: "s2", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 18 }] },
+    // flip: la piastra va in -Y; il boss deve uscire sulla faccia superiore (+Y), non sotto.
+    { id: "e2", type: "extrude", sketch: "s2", depth: 10, merge: true, flip: true },
+    { id: "s3", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 8 }] },
+    { id: "c1", type: "cut", sketch: "s3", throughAll: true },
+  ]
+}
+
+function pin8x25Ops(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 8 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 25 },
+  ]
+}
+
+function isBossCylinderPart(ops: CadOperation[]): boolean {
+  if (hasRectSizeOps(ops, 80, 40) || hasRectSizeOps(ops, 80, 50) || hasRectSizeOps(ops, 100, 50)) return false
+  if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops)) return false
+  const ext10 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)
+  return ext10 && hasCircleDia(ops, 18) && !ops.some((o) => o.type === "revolve")
+}
+
+function isBossPinPlate(ops: CadOperation[]): boolean {
+  if (!hasRectSizeOps(ops, 80, 40)) return false
+  if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops)) return false
+  if (hasRectSizeOps(ops, 100, 50) || hasRectSizeOps(ops, 80, 60) || hasRectSizeOps(ops, 50, 40)) return false
+  const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
+  const ext10 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)
+  return ext6 && (hasCircleDia(ops, 18) || ext10)
+}
+
+function isBossPinFastener(ops: CadOperation[]): boolean {
+  if (hasRectSizeOps(ops, 80, 40) || isBossPinPlate(ops) || isBossCylinderPart(ops)) return false
+  const ext25 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 25) < 0.6)
+  const ext30 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 30) < 0.6)
+  const vite = ops.some((o) => /vite/i.test(o.id) || o.type === "revolve")
+  return (ext25 && hasCircleDia(ops, 8)) || (vite && !ext30) || (hasCircleDia(ops, 8) && ext25)
+}
+
+function isBossPinJob(docs: SolidWorksDocumentPayload[]): boolean {
+  const parts = docs.filter((d) => d.document.type === "part")
+  if (parts.length === 0) return false
+  const names = docs.map((d) => d.document.name).join(" ")
+  if (/PiastraBoss80|Perno8x25|AssiemePiastraBoss/i.test(names)) return true
+  if (/PiastraAsola100|Perno10x20|Albero16x80|Perno8x30|PiastraNervatura80|Orecchio30/i.test(names)) return false
+  const plate = parts.find((p) => isBossPinPlate(p.operations) || hasRectSizeOps(p.operations, 80, 40))
+  if (!plate || !hasRectSizeOps(plate.operations, 80, 40)) return false
+  if (has8050Plate(plate.operations)) return false
+  const boss = parts.find((p) => p !== plate && isBossCylinderPart(p.operations))
+  const pin = parts.find((p) => p !== plate && p !== boss && isBossPinFastener(p.operations))
+  const samePartBoss = hasCircleDia(plate.operations, 18) || plate.operations.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)
+  return Boolean((samePartBoss || boss) && (pin || parts.some((p) => p !== plate && isBossPinFastener(p.operations))))
+}
+
+function fixBossPinAssembly(jobOut: SolidWorksDocumentPayload[]): void {
+  if (!isBossPinJob(jobOut)) return
+  if (
+    isStackedColumnJob(jobOut) ||
+    isWindowCoverJob(jobOut) ||
+    isPatternBushingJob(jobOut) ||
+    isHingeJob(jobOut) ||
+    isChamferShaftJob(jobOut) ||
+    isSlotPinJob(jobOut)
+  ) {
+    return
+  }
+
+  const parts = jobOut.filter((d) => d.document.type === "part")
+  let plate =
+    parts.find((p) => isBossPinPlate(p.operations) || hasRectSizeOps(p.operations, 80, 40)) || undefined
+  const strayBoss = parts.find((p) => p !== plate && isBossCylinderPart(p.operations))
+  let pin = parts.find((p) => p !== plate && p !== strayBoss && isBossPinFastener(p.operations))
+  if (!pin) pin = parts.find((p) => p !== plate && p !== strayBoss)
+  const plateName =
+    plate?.document.name && /Piastra|Boss|Lastra/i.test(plate.document.name) ? plate.document.name : "PiastraBoss80"
+  const pinName = pin?.document.name && /Perno|Pin/i.test(pin.document.name) ? pin.document.name : "Perno8x25"
+  if (!plate) plate = makePartDoc(plateName, bossPinPlateOps())
+  else {
+    plate.document.name = plateName
+    plate.document.savePath = `CAD/${plateName}.SLDPRT`
+    plate.document.snapshotPath = `Export/${plateName}.jpg`
+    plate.operations.length = 0
+    plate.operations.push(...bossPinPlateOps())
+  }
+  if (!pin) pin = makePartDoc(pinName, pin8x25Ops())
+  else {
+    pin.document.name = pinName
+    pin.document.savePath = `CAD/${pinName}.SLDPRT`
+    pin.document.snapshotPath = `Export/${pinName}.jpg`
+    pin.operations.length = 0
+    pin.operations.push(...pin8x25Ops())
+  }
+
+  let asm = jobOut.find((d) => d.document.type === "assembly")
+  const asmName = asm?.document.name && /^Assieme/i.test(asm.document.name) ? asm.document.name : "AssiemePiastraBoss"
+  if (!asm) {
+    asm = {
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "assembly",
+        name: asmName,
+        attachToActive: false,
+        savePath: `CAD/${asmName}.SLDASM`,
+        snapshotPath: `Export/${asmName}.jpg`,
+        snapshotView: "*Isometric",
+      },
+      variables: [],
+      configurations: [],
+      operations: [],
+    }
+  } else {
+    asm.document.name = asmName
+    asm.document.savePath = `CAD/${asmName}.SLDASM`
+  }
+  // Perno pezzo Y[-25,0]: insert y=10 per filo corona boss a Y=10.
+  // entity top = faccia T max (corona Ø18), non pad (esclude tMax → faccia piastra).
+  asm.operations = [
+    { id: "comp-pl", type: "component", path: `CAD/${plateName}.SLDPRT`, x: 0, y: 0, z: 0, fix: true },
+    { id: "comp-pn", type: "component", path: `CAD/${pinName}.SLDPRT`, x: 0, y: 10, z: 0 },
+    {
+      id: "m-coin",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-pn",
+      component2: "comp-pl",
+      entity1: "top",
+      entity2: "top",
+    },
+    {
+      id: "m-front",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-pn",
+      component2: "comp-pl",
+      entity1: "front",
+      entity2: "front",
+    },
+    {
+      id: "m-right",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-pn",
+      component2: "comp-pl",
+      entity1: "right",
+      entity2: "right",
+    },
+    {
+      id: "m-conc",
+      type: "mate",
+      mateType: "concentric",
+      component1: "comp-pn",
+      component2: "comp-pl",
+      entity1: "outer",
+      entity2: "inner",
+      diameter: 8,
+    },
+    { id: "v-auto", type: "verify" },
+  ]
+
+  const drawings = jobOut.filter((d) => d.document.type === "drawing")
+  for (const d of drawings) {
+    if (!/^Tavola/i.test(d.document.name) || /Assemie/i.test(d.document.name)) {
+      d.document.name = "TavolaPiastraBoss"
+    }
+    d.document.savePath = `Disegni/${d.document.name}.SLDDRW`
+    d.document.sheetFormat = d.document.sheetFormat || "A3"
+    for (const op of d.operations) {
+      if (op.type === "standardViews" || op.type === "drawingView") {
+        const rec = op as { model?: string }
+        rec.model = `CAD/${asmName}.SLDASM`
+      }
+    }
+  }
+  if (drawings.length === 0) {
+    drawings.push({
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "drawing",
+        name: "TavolaPiastraBoss",
+        attachToActive: false,
+        savePath: "Disegni/TavolaPiastraBoss.SLDDRW",
+        snapshotPath: "Export/TavolaPiastraBoss.jpg",
+        sheetFormat: "A3",
+      },
+      variables: [],
+      configurations: [],
+      operations: [
+        {
+          id: "dv1",
+          type: "standardViews",
+          model: `CAD/${asmName}.SLDASM`,
+          firstAngle: true,
+          includeIso: true,
+        },
+        { id: "dd1", type: "modelDimensions" },
+        {
+          id: "an1",
+          type: "annotation",
+          text: "Piastra 80×40×6 boss Ø18×10 — perno Ø8×25",
           x: 0.02,
           y: 0.27,
         },

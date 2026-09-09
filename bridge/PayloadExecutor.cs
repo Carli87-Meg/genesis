@@ -2345,10 +2345,12 @@ internal sealed partial class PayloadExecutor
         }
         else if (wantTop)
         {
+            // `top` = faccia planare all'estremo T (corona del boss), non l'area maggiore:
+            // su piastra+boss l'area maggiore è la piastra, ~2 mm sotto la corona Ø18.
             var tMin = cands.Min(c => c.T);
             var upper = cands.Where(c => c.T > tMin + 0.0004).ToList();
             if (upper.Count == 0) upper = cands;
-            var pick = upper.OrderByDescending(c => c.Area).ThenByDescending(c => c.T).First();
+            var pick = upper.OrderByDescending(c => c.T).ThenByDescending(c => c.Area).First();
             best = pick.Face;
             bestT = pick.T;
             bestArea = pick.Area;
