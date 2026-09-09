@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaProfiloC",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaProfiloC.SLDDRW",
+    "snapshotPath": "Export/TavolaProfiloC.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/ProfiloC80x40x3.SLDPRT",
+      "firstAngle": true,
+      "includeIso": true,
+      "comment": "Front, Top, Right + Isometric views of C-profile"
+    },
+    {
+      "id": "dm1",
+      "type": "modelDimensions",
+      "comment": "auto-retrieve all model dimensions: H=80, B=40, t=3, L=200, hole Ø8, inset 25"
+    },
+    {
+      "id": "an1",
+      "type": "annotation",
+      "text": "PROFILO A C  80×40×3 – L=200 mm\nMateriale: S235 / Fe360\n3x Ø8 passanti sul dorso, passo 75 mm, inset 25 mm",
+      "x": 0.02,
+      "y": 0.27
+    }
+  ]
+}

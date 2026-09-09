@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "ProfiloC80x40x3",
+    "attachToActive": false,
+    "savePath": "CAD/ProfiloC80x40x3.SLDPRT",
+    "snapshotPath": "Export/ProfiloC80x40x3.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Front",
+      "comment": "web: t=3 wide, H=80 tall, centered at origin. Left edge at X=-1.5, right edge at X=+1.5",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 3,
+          "height": 80,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketchId": "s1",
+      "depth": 200,
+      "symmetric": false,
+      "merge": false,
+      "comment": "extrude web 200 mm along Z",
+      "sketch": "s1"
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Front",
+      "comment": "top flange: 37 mm wide (X from +1.5 to +38.5), 3 mm tall (Y from +38.5 to +41.5 — but clamped to web top at Y=+40, so Y from +38.5 to +41.5 gives inner face flush with web top inner edge). Width=37, height=3, cx=20, cy=39.5",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 20,
+          "cy": 39.5,
+          "width": 37,
+          "height": 3,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "extrude",
+      "sketchId": "s2",
+      "depth": 200,
+      "symmetric": false,
+      "merge": true,
+      "comment": "extrude top flange 200 mm, merge with web",
+      "sketch": "s2"
+    },
+    {
+      "id": "s3",
+      "type": "sketch",
+      "plane": "Front",
+      "comment": "bottom flange: 37 mm wide (X from +1.5 to +38.5), 3 mm tall (Y from -41.5 to -38.5 — inner face flush with web bottom inner edge). Width=37, height=3, cx=20, cy=-39.5",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 20,
+          "cy": -39.5,
+          "width": 37,
+          "height": 3,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "e3",
+      "type": "extrude",
+      "sketchId": "s3",
+      "depth": 200,
+      "symmetric": false,
+      "merge": true,
+      "comment": "extrude bottom flange 200 mm, merge with web",
+      "sketch": "s3"
+    },
+    {
+      "id": "s4",
+      "type": "sketch",
+      "plane": "Right",
+      "comment": "3x Ø8 holes on web centerline (Y=0). Z positions: -75 (inset 25 from Z=0 end), 0 (midpoint), +75 (inset 25 from Z=200 end). Right plane origin at Z=0 of part; extrude was from Z=0 to Z=200, so Z=+75 and Z=-75 relative to part midpoint at Z=100 → use cx=-75, cx=0, cx=+75 relative to Right plane (which maps to part Z). Actually Right plane X-axis = part Z-axis: hole at Z=25 → cx=-75 from mid; hole at Z=100 → cx=0; hole at Z=175 → cx=+75",
+      "contours": [
+        {
+          "type": "circle",
+          "cx": -75,
+          "cy": 0,
+          "diameter": 8,
+          "kind": "circle",
+          "comment": "hole at Z=25 mm from start (inset 25 mm)"
+        },
+        {
+          "type": "circle",
+          "cx": 0,
+          "cy": 0,
+          "diameter": 8,
+          "kind": "circle",
+          "comment": "hole at Z=100 mm (midpoint)"
+        },
+        {
+          "type": "circle",
+          "cx": 75,
+          "cy": 0,
+          "diameter": 8,
+          "kind": "circle",
+          "comment": "hole at Z=175 mm (inset 25 mm from end)"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketchId": "s4",
+      "throughAll": true,
+      "comment": "cut 3x Ø8 holes through web thickness (3 mm) along X",
+      "sketch": "s4"
+    }
+  ]
+}

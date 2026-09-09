@@ -67,7 +67,9 @@ Assembly: Sx fixed; concentric Ø8 with holeX ±220; coincident zmin/zmax so tre
 Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.
 
 Any other request (coperchio, maniglia, asola, new plate, bushing, pin, assembly, drawing): compile the user's geometry with NEW PascalCase names. Never reuse StaffaFissaggio, BoccolaGuida, AssiemeStaffa, PiastraSupporto, BasePiastra100, BoccolaCentrale, Piastra90, FiancataSx, LongheroneSx.
-Welded / saldata = same part, merge true, not a second component. U-handle height h: three merged rectangles on Front (two legs + top bar) standing on the lid, extrude a small thickness, or equivalent.
+Welded / saldata = same part, merge true, not a second component.
+U-handle height h on a lid: sketch on Front two legs + one top bar (section 3–4 mm in the sketch). Extrude DEPTH = grip width 18–25 mm, NEVER 3 mm — depth 3 makes a vertical wall, not a U you can see. Legs and bar must not overlap in the same sketch (three sketches+extrude merge, edges touching). Opening in the middle must stay empty.
+C-profile / profilo a C / C-channel H×B×t, length L: NOT a flat rectangle. Cross-section on Front: web H×t plus two flanges B×t opening to one side, then extrude L. Prefer three merged non-overlapping rectangles (web t×H, flanges (B-t)×t at both ends of the web). Holes on the dorso/web: sketch on Right, throughAll through the web thickness. Never emit an 80×40 rectangle extruded L.
 Asola/slot W×H: cut a rectangle W×H (optionally two ØH circles at the ends). M4 clearance Ø4.5, M6 Ø6.6 unless specified.
 job = each unique part, then assembly if 2+ parts, then drawing if tavola/A3/Cartiglio_CM is asked. After mates, verify. Drawing: sheetFormat A3 Cartiglio_CM, standardViews.model = the assembly (or part) savePath.`
 

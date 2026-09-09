@@ -81,7 +81,7 @@
       "id": "s3",
       "type": "sketch",
       "plane": "Front",
-      "note": "Montante sinistro: X da -16.5 a -13.5 (larghezza 3, centrato a X=-15), Y da 3 a 25 (altezza 22, base sul top coperchio a Y=3)",
+      "note": "Montante sinistro: larghezza 3 mm centrata a X=-15, da Y=3 (top piastra) a Y=25 (altezza esterna 22 mm). Base a Y=3 tocca il top della piastra.",
       "contours": [
         {
           "type": "rectangle",
@@ -97,7 +97,7 @@
       "id": "e2",
       "type": "extrude",
       "sketchId": "s3",
-      "depth": 3,
+      "depth": 20,
       "symmetric": true,
       "merge": true,
       "sketch": "s3"
@@ -106,7 +106,7 @@
       "id": "s4",
       "type": "sketch",
       "plane": "Front",
-      "note": "Montante destro: X da 13.5 a 16.5 (larghezza 3, centrato a X=+15), Y da 3 a 25 (altezza 22). Non si sovrappone al montante sx.",
+      "note": "Montante destro: larghezza 3 mm centrata a X=+15, da Y=3 a Y=25. Speculare al sinistro, nessuna sovrapposizione.",
       "contours": [
         {
           "type": "rectangle",
@@ -122,7 +122,7 @@
       "id": "e3",
       "type": "extrude",
       "sketchId": "s4",
-      "depth": 3,
+      "depth": 20,
       "symmetric": true,
       "merge": true,
       "sketch": "s4"
@@ -131,7 +131,7 @@
       "id": "s5",
       "type": "sketch",
       "plane": "Front",
-      "note": "Traversa superiore: X da -13.5 a 13.5 (larghezza 27, tra i montanti interni), Y da 22 a 25 (altezza 3). Tocca i montanti sui bordi interni senza sovrapporsi.",
+      "note": "Traversa superiore: larghezza 27 mm (da X=-13.5 a X=+13.5, tra le facce interne dei montanti), altezza 3 mm da Y=22 a Y=25. Tocca i montanti sui bordi interni senza sovrapporsi. Luce aperta sotto (da Y=3 a Y=22).",
       "contours": [
         {
           "type": "rectangle",
@@ -147,7 +147,7 @@
       "id": "e4",
       "type": "extrude",
       "sketchId": "s5",
-      "depth": 3,
+      "depth": 20,
       "symmetric": true,
       "merge": true,
       "sketch": "s5"
