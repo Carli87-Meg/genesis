@@ -208,6 +208,7 @@ export function interpretFromLlmText(
   if (jobOut) fixPatternBushingAssembly(jobOut)
   if (jobOut) fixHingeAssembly(jobOut)
   if (jobOut) fixChamferShaftAssembly(jobOut)
+  if (jobOut) fixSlotPinAssembly(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -2658,6 +2659,207 @@ function fixChamferShaftAssembly(jobOut: SolidWorksDocumentPayload[]): void {
 
   jobOut.length = 0
   jobOut.push(shaft, plate, asm, ...drawings)
+}
+
+function oblongSlotPlateOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 100, height: 50 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 8 },
+    {
+      id: "s2",
+      type: "sketch",
+      plane: "Top",
+      contours: [
+        { kind: "line", x1: -15, y1: 5, x2: 15, y2: 5 },
+        { kind: "arc", x1: 15, y1: 5, x2: 15, y2: -5, x3: 20, y3: 0 },
+        { kind: "line", x1: 15, y1: -5, x2: -15, y2: -5 },
+        { kind: "arc", x1: -15, y1: -5, x2: -15, y2: 5, x3: -20, y3: 0 },
+      ],
+    },
+    { id: "c1", type: "cut", sketch: "s2", throughAll: true },
+  ]
+}
+
+function pin10x20Ops(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 10 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 20 },
+  ]
+}
+
+function isOblongSlotPlate(ops: CadOperation[]): boolean {
+  if (!hasRectSizeOps(ops, 100, 50)) return false
+  if (hasRectSizeOps(ops, 80, 50) || hasRectSizeOps(ops, 100, 60) || hasRectSizeOps(ops, 90, 60)) return false
+  const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  if (!ext8) return false
+  const cutSketches = ops.filter((o) => o.type === "sketch" && ops.some((c) => c.type === "cut" && c.sketch === o.id))
+  const contours = cutSketches.flatMap((s) => (s.type === "sketch" ? s.contours : []))
+  const lines = contours.filter((c) => c.kind === "line" && !c.construction)
+  const circs = contours.filter((c) => c.kind === "circle" && Math.abs(c.diameter - 10) < 0.2)
+  const arcs = contours.filter((c) => c.kind === "arc")
+  const slotRect = contours.some(
+    (c) => c.kind === "rectangle" && isRectSize(Number(c.width), Number(c.height), 40, 10),
+  )
+  const ends = circs.filter((c) => Math.abs(Math.abs(c.cx) - 15) < 1.2)
+  return arcs.length >= 2 || (lines.length >= 2 && ends.length >= 2) || slotRect || ends.length >= 2
+}
+
+function isSlotPinJob(docs: SolidWorksDocumentPayload[]): boolean {
+  const parts = docs.filter((d) => d.document.type === "part")
+  if (parts.length === 0) return false
+  const names = parts.map((p) => p.document.name).join(" ")
+  if (/PiastraAsola100|Perno10x20|AssiemePiastraAsola/i.test(names)) return true
+  const plate = parts.find((p) => isOblongSlotPlate(p.operations))
+  if (!plate) return false
+  const other = parts.find((p) => p !== plate)
+  if (!other) return false
+  const ext20 = other.operations.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 20) < 0.6)
+  const d10 = hasCircleDia(other.operations, 10)
+  const vite = other.operations.some((o) => /vite/i.test(o.id) || o.type === "revolve")
+  return ext20 || d10 || vite
+}
+
+function fixSlotPinAssembly(jobOut: SolidWorksDocumentPayload[]): void {
+  if (!isSlotPinJob(jobOut)) return
+  if (isStackedColumnJob(jobOut) || isWindowCoverJob(jobOut) || isPatternBushingJob(jobOut) || isHingeJob(jobOut)) return
+
+  const parts = jobOut.filter((d) => d.document.type === "part")
+  let plate = parts.find((p) => isOblongSlotPlate(p.operations) || hasRectSizeOps(p.operations, 100, 50))
+  let pin = parts.find((p) => p !== plate)
+  const plateName = plate?.document.name && /Piastra|Lastra|Asola/i.test(plate.document.name) ? plate.document.name : "PiastraAsola100"
+  const pinName = pin?.document.name && /Perno|Pin/i.test(pin.document.name) ? pin.document.name : "Perno10x20"
+  if (!plate) plate = makePartDoc(plateName, oblongSlotPlateOps())
+  else {
+    plate.document.name = plateName
+    plate.document.savePath = `CAD/${plateName}.SLDPRT`
+    plate.document.snapshotPath = `Export/${plateName}.jpg`
+    plate.operations.length = 0
+    plate.operations.push(...oblongSlotPlateOps())
+  }
+  if (!pin) pin = makePartDoc(pinName, pin10x20Ops())
+  else {
+    pin.document.name = pinName
+    pin.document.savePath = `CAD/${pinName}.SLDPRT`
+    pin.document.snapshotPath = `Export/${pinName}.jpg`
+    pin.operations.length = 0
+    pin.operations.push(...pin10x20Ops())
+  }
+
+  let asm = jobOut.find((d) => d.document.type === "assembly")
+  const asmName = asm?.document.name && /^Assieme/i.test(asm.document.name) ? asm.document.name : "AssiemePiastraAsola"
+  if (!asm) {
+    asm = {
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "assembly",
+        name: asmName,
+        attachToActive: false,
+        savePath: `CAD/${asmName}.SLDASM`,
+        snapshotPath: `Export/${asmName}.jpg`,
+        snapshotView: "*Isometric",
+      },
+      variables: [],
+      configurations: [],
+      operations: [],
+    }
+  } else {
+    asm.document.name = asmName
+    asm.document.savePath = `CAD/${asmName}.SLDASM`
+  }
+  asm.operations = [
+    { id: "comp-pl", type: "component", path: `CAD/${plateName}.SLDPRT`, x: 0, y: 0, z: 0, fix: true },
+    { id: "comp-pn", type: "component", path: `CAD/${pinName}.SLDPRT`, x: 0, y: -6, z: 0 },
+    {
+      id: "m-coin",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-pn",
+      component2: "comp-pl",
+      entity1: "top",
+      entity2: "top",
+    },
+    {
+      id: "m-front",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-pn",
+      component2: "comp-pl",
+      entity1: "front",
+      entity2: "front",
+    },
+    {
+      id: "m-right",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-pn",
+      component2: "comp-pl",
+      entity1: "right",
+      entity2: "right",
+    },
+    {
+      id: "m-conc",
+      type: "mate",
+      mateType: "concentric",
+      component1: "comp-pn",
+      component2: "comp-pl",
+      entity1: "outer",
+      entity2: "inner",
+      diameter: 10,
+    },
+    { id: "v-auto", type: "verify" },
+  ]
+
+  const drawings = jobOut.filter((d) => d.document.type === "drawing")
+  for (const d of drawings) {
+    if (!/^Tavola/i.test(d.document.name) || /Assemie/i.test(d.document.name)) {
+      d.document.name = "TavolaPiastraAsola"
+    }
+    d.document.savePath = `Disegni/${d.document.name}.SLDDRW`
+    d.document.sheetFormat = d.document.sheetFormat || "A3"
+    for (const op of d.operations) {
+      if (op.type === "standardViews" || op.type === "drawingView") {
+        const rec = op as { model?: string }
+        rec.model = `CAD/${asmName}.SLDASM`
+      }
+    }
+  }
+  if (drawings.length === 0) {
+    drawings.push({
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "drawing",
+        name: "TavolaPiastraAsola",
+        attachToActive: false,
+        savePath: "Disegni/TavolaPiastraAsola.SLDDRW",
+        snapshotPath: "Export/TavolaPiastraAsola.jpg",
+        sheetFormat: "A3",
+      },
+      variables: [],
+      configurations: [],
+      operations: [
+        {
+          id: "dv1",
+          type: "standardViews",
+          model: `CAD/${asmName}.SLDASM`,
+          firstAngle: true,
+          includeIso: true,
+        },
+        { id: "dd1", type: "modelDimensions" },
+        {
+          id: "an1",
+          type: "annotation",
+          text: "Piastra 100×50×8 asola oblunga 40×10 — perno Ø10×20",
+          x: 0.02,
+          y: 0.27,
+        },
+      ],
+    })
+  }
+
+  jobOut.length = 0
+  jobOut.push(plate, pin, asm, ...drawings)
 }
 
 const Z_BRACKET_POLY: Array<[number, number]> = [
