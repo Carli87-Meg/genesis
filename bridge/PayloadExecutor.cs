@@ -89,6 +89,7 @@ internal sealed partial class PayloadExecutor
 
                 EnableVisibleDimensions(model);
                 QuoteAllProfileFeatures(model);
+                ApplyMassUnitsAndPeso(model);
                 Thread.Sleep(400);
             }
 
@@ -1254,8 +1255,10 @@ internal sealed partial class PayloadExecutor
             InspectMates(model, assy);
             if (FindBox(assy, "LongheroneSx") is not null)
                 VerifyTelaioModule(assy);
-            else
+            else if (FindBox(assy, "FiancataSx") is not null)
                 VerifyScalaModule(assy);
+            else
+                VerifyGenericAssembly(model, assy);
             return;
         }
 
@@ -1396,7 +1399,6 @@ internal sealed partial class PayloadExecutor
             try { model.ForceRebuild3(true); } catch { /* ignore */ }
         }
 
-        var plate = FindBox(assy, "PiastraBase") ?? FindBox(assy, "c1");
         if (FindBox(assy, "FiancataSx") is not null)
         {
             VerifyScalaModule(assy);
@@ -1407,12 +1409,13 @@ internal sealed partial class PayloadExecutor
             VerifyTelaioModule(assy);
             return;
         }
-        var pin = FindBox(assy, "Perno") ?? FindBox(assy, "c2");
-        var wash = FindBox(assy, "Rondella") ?? FindBox(assy, "c3");
+
+        var plate = FindBox(assy, "PiastraBase");
+        var pin = FindBox(assy, "Perno");
+        var wash = FindBox(assy, "Rondella");
         if (plate is null || pin is null || wash is null)
         {
-            Step("verify", false, $"box mancanti plate={plate is not null} pin={pin is not null} wash={wash is not null}");
-            LogComponentBoxes(assy);
+            VerifyGenericAssembly(model, assy);
             return;
         }
 
@@ -1447,6 +1450,110 @@ internal sealed partial class PayloadExecutor
             $"axis={axisName} pinThrough={pinThrough} pinAxis={pinOnAxis} washOnPlate={washOnPlate} washOut={washOutside} " +
             $"plate={plate[lo]:0.02}..{plate[hi]:0.02} pin={pin[lo]:0.02}..{pin[hi]:0.02} wash={wash[lo]:0.02}..{wash[hi]:0.02}");
         LogComponentBoxes(assy);
+    }
+
+    /// <summary>
+    /// Assieme generico: ≥2 componenti, mate concentrici, coassialità (~3 mm su 2 assi).
+    /// Non dipende dai nomi dei kit staffa/scala/telaio/piastra-perno.
+    /// </summary>
+    private void VerifyGenericAssembly(ModelDoc2 model, IAssemblyDoc assy)
+    {
+        var items = new List<(string Name, double[] Box)>();
+        if (AsArray(assy.GetComponents(false)) is object[] comps)
+        {
+            foreach (var obj in comps)
+            {
+                if (obj is not Component2 c) continue;
+                var suppressed = false;
+                try { suppressed = c.IsSuppressed(); } catch { /* keep */ }
+                if (suppressed) continue;
+                var box = ReadBoxMm(c);
+                if (box is null) continue;
+                items.Add((c.Name2 ?? "?", box));
+            }
+        }
+
+        LogComponentBoxes(assy);
+        if (items.Count < 2)
+        {
+            Step("verify", false, $"componenti={items.Count} (servono ≥2 parti)");
+            return;
+        }
+
+        var concentric = CountMatesOfType(model, 1);
+        var coincident = CountMatesOfType(model, 0);
+        var coaxial = false;
+        var seated = false;
+        var pairInfo = "";
+        for (var i = 0; i < items.Count && !coaxial; i++)
+        {
+            for (var j = i + 1; j < items.Count; j++)
+            {
+                var a = items[i].Box;
+                var b = items[j].Box;
+                var dx = Math.Abs((a[0] + a[1]) / 2 - (b[0] + b[1]) / 2);
+                var dy = Math.Abs((a[2] + a[3]) / 2 - (b[2] + b[3]) / 2);
+                var dz = Math.Abs((a[4] + a[5]) / 2 - (b[4] + b[5]) / 2);
+                var aligned = (dx < 3 ? 1 : 0) + (dy < 3 ? 1 : 0) + (dz < 3 ? 1 : 0);
+                if (aligned < 2) continue;
+
+                coaxial = true;
+                var axis = dx >= dy && dx >= dz ? 0 : dy >= dz ? 2 : 4;
+                var aLo = Math.Min(a[axis], a[axis + 1]);
+                var aHi = Math.Max(a[axis], a[axis + 1]);
+                var bLo = Math.Min(b[axis], b[axis + 1]);
+                var bHi = Math.Max(b[axis], b[axis + 1]);
+                seated = Math.Abs(aLo - bHi) < 2.5
+                         || Math.Abs(bLo - aHi) < 2.5
+                         || (aLo < bHi - 0.2 && bLo < aHi - 0.2);
+                pairInfo =
+                    $"{items[i].Name}/{items[j].Name} dX={dx:0.02} dY={dy:0.02} dZ={dz:0.02}";
+                break;
+            }
+        }
+
+        var ok = concentric >= 1 && coaxial;
+        Step("verify", ok,
+            $"n={items.Count} concentric={concentric} coincident={coincident} coaxial={coaxial} seated={seated} {pairInfo}");
+    }
+
+    private int CountMatesOfType(ModelDoc2 model, int mateType)
+    {
+        var n = 0;
+        try
+        {
+            var feat = (Feature)model.FirstFeature();
+            while (feat is not null)
+            {
+                string typeName;
+                try { typeName = feat.GetTypeName2(); }
+                catch { typeName = ""; }
+
+                if (typeName is "MateGroup" or "MateGroupFeat")
+                {
+                    var sub = feat.GetFirstSubFeature() as Feature;
+                    while (sub is not null)
+                    {
+                        try
+                        {
+                            if (sub.GetSpecificFeature2() is IMate2 mate && mate.Type == mateType)
+                                n++;
+                        }
+                        catch { /* not a mate */ }
+
+                        sub = sub.GetNextSubFeature() as Feature;
+                    }
+                }
+
+                feat = feat.GetNextFeature() as Feature;
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        return n;
     }
 
     private double[]? FindBox(IAssemblyDoc assy, string key)

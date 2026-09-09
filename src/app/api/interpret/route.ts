@@ -50,7 +50,8 @@ Single part: omit "job". Unique operation ids across the whole job. No sheet met
 
 TEMPLATES — use at most one, and only if the user request matches. Never mix them. Never emit a template the user did not ask for.
 
-Staffa a L / L-bracket / boccola / kit fissaggio:
+Staffa a L / L-bracket / kit fissaggio a L:
+Use ONLY if the user asks for a staffa a L, L-bracket, or that named kit. A generic base + bushing/boccola is NOT this template. Do not emit StaffaFissaggio, BoccolaGuida, AssiemeStaffa, or TavolaStaffa unless asked.
 root is the main part; job = part, bushing, assembly, drawing.
 - Part: L-bracket 80×50×8 on Top, wall 80×8 extruded 40 mm on +Z edge, boss Ø16 height 14, 4 holes Ø6.5 at corners, guide bore Ø10.2 at center, cut throughAll. Names StaffaFissaggio, CAD/StaffaFissaggio.SLDPRT.
 - Bushing: circles Ø16 and Ø10.2, extrude 12 mm. BoccolaGuida, CAD/BoccolaGuida.SLDPRT.
@@ -62,7 +63,9 @@ job = unique prismatic parts, then one assembly, then drawing if tavola/A3 is as
 Identical geometry = one SLDPRT inserted twice (two scalini → un solo Scalino.SLDPRT).
 Typical module (keep under 8 documents): FiancataSx, FiancataDx (Front 600×40, thickness 8 along Z, 2 holes Ø8 at X=±220 through Z), Scalino (Front 220×40, 1 hole Ø8, extrude 724 along Z — same hole axis as the stringers, filling the inner gap), optional Piede 80×80×8.
 Assembly: Sx fixed; concentric Ø8 with holeX ±220; coincident zmin/zmax so treads sit in the gap; parallel xmax to lock rotation; piede ymax to stringer ymin. Paths CAD/Name.SLDPRT.
-Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.`
+Drawing: A3 Cartiglio_CM, standardViews.model = assembly savePath.
+
+Any other request (new plate, bushing, pin, assembly, drawing): compile the user's geometry with NEW PascalCase names. Never reuse StaffaFissaggio, BoccolaGuida, AssiemeStaffa, PiastraSupporto, FiancataSx, LongheroneSx. job = each unique part, then assembly if 2+ parts, then drawing if tavola/A3/Cartiglio_CM is asked. M6 clearance holes Ø6.6 unless specified. After mates, verify. Drawing: sheetFormat A3 Cartiglio_CM, standardViews.model = the assembly (or part) savePath.`
 
 type InterpretBody = {
   prompt?: string
