@@ -15,14 +15,14 @@
     {
       "id": "s1",
       "type": "sketch",
-      "plane": "Front",
-      "comment": "web: t=3 wide, H=80 tall, centered at origin. Left edge at X=-1.5, right edge at X=+1.5",
+      "plane": "Right",
+      "comment": "Dorso (web): rettangolo 200 mm (lungo Z, asse X del piano Right) x 80 mm (lungo Y). Centrato in origine: cx=0, cy=0, width=200, height=80.",
       "contours": [
         {
           "type": "rectangle",
           "cx": 0,
           "cy": 0,
-          "width": 3,
+          "width": 200,
           "height": 80,
           "kind": "rectangle"
         }
@@ -32,22 +32,22 @@
       "id": "e1",
       "type": "extrude",
       "sketchId": "s1",
-      "depth": 200,
+      "depth": 3,
       "symmetric": false,
       "merge": false,
-      "comment": "extrude web 200 mm along Z",
+      "comment": "Estrudi il dorso 3 mm lungo +X (spessore del dorso). Il dorso occupa X da 0 a +3, Y da -40 a +40, Z da -100 a +100.",
       "sketch": "s1"
     },
     {
       "id": "s2",
       "type": "sketch",
       "plane": "Front",
-      "comment": "top flange: 37 mm wide (X from +1.5 to +38.5), 3 mm tall (Y from +38.5 to +41.5 — but clamped to web top at Y=+40, so Y from +38.5 to +41.5 gives inner face flush with web top inner edge). Width=37, height=3, cx=20, cy=39.5",
+      "comment": "Ala superiore: rettangolo 37 mm largo (X da +3 a +40) x 3 mm alto (Y da +38.5 a +41.5 — faccia interna a Y=+38.5 flush con bordo superiore interno del dorso a Y=+40-1.5=+38.5). cx = 3 + 37/2 = 21.5, cy = 40 - 1.5 = 38.5 + 1.5 = 40. Corretto: bordo superiore dorso Y=+40, ala spessa 3 mm verso l'esterno → Y da +38.5 a +41.5, cy=40, width=37, height=3.",
       "contours": [
         {
           "type": "rectangle",
-          "cx": 20,
-          "cy": 39.5,
+          "cx": 21.5,
+          "cy": 40,
           "width": 37,
           "height": 3,
           "kind": "rectangle"
@@ -61,19 +61,19 @@
       "depth": 200,
       "symmetric": false,
       "merge": true,
-      "comment": "extrude top flange 200 mm, merge with web",
+      "comment": "Estrudi ala superiore 200 mm (lunghezza profilo). Il motore tratta Dir=true come midplane: Z da -100 a +100, allineato al dorso.",
       "sketch": "s2"
     },
     {
       "id": "s3",
       "type": "sketch",
       "plane": "Front",
-      "comment": "bottom flange: 37 mm wide (X from +1.5 to +38.5), 3 mm tall (Y from -41.5 to -38.5 — inner face flush with web bottom inner edge). Width=37, height=3, cx=20, cy=-39.5",
+      "comment": "Ala inferiore: rettangolo 37 mm largo (X da +3 a +40) x 3 mm alto (Y da -41.5 a -38.5). cx=21.5, cy=-40, width=37, height=3.",
       "contours": [
         {
           "type": "rectangle",
-          "cx": 20,
-          "cy": -39.5,
+          "cx": 21.5,
+          "cy": -40,
           "width": 37,
           "height": 3,
           "kind": "rectangle"
@@ -87,14 +87,14 @@
       "depth": 200,
       "symmetric": false,
       "merge": true,
-      "comment": "extrude bottom flange 200 mm, merge with web",
+      "comment": "Estrudi ala inferiore 200 mm (lunghezza profilo), merge con dorso e ala superiore.",
       "sketch": "s3"
     },
     {
       "id": "s4",
       "type": "sketch",
       "plane": "Right",
-      "comment": "3x Ø8 holes on web centerline (Y=0). Z positions: -75 (inset 25 from Z=0 end), 0 (midpoint), +75 (inset 25 from Z=200 end). Right plane origin at Z=0 of part; extrude was from Z=0 to Z=200, so Z=+75 and Z=-75 relative to part midpoint at Z=100 → use cx=-75, cx=0, cx=+75 relative to Right plane (which maps to part Z). Actually Right plane X-axis = part Z-axis: hole at Z=25 → cx=-75 from mid; hole at Z=100 → cx=0; hole at Z=175 → cx=+75",
+      "comment": "3x fori Ø8 sul dorso, centrati su Y=0 (mezzeria altezza), a Z=-75, 0, +75 (piano Right: asse X = parte Z). cx=-75 → Z=-75 (inset 25 mm da Z=-100), cx=0 → Z=0 (mezzeria), cx=+75 → Z=+75 (inset 25 mm da Z=+100).",
       "contours": [
         {
           "type": "circle",
@@ -102,7 +102,7 @@
           "cy": 0,
           "diameter": 8,
           "kind": "circle",
-          "comment": "hole at Z=25 mm from start (inset 25 mm)"
+          "comment": "foro a Z=-75 mm"
         },
         {
           "type": "circle",
@@ -110,7 +110,7 @@
           "cy": 0,
           "diameter": 8,
           "kind": "circle",
-          "comment": "hole at Z=100 mm (midpoint)"
+          "comment": "foro a Z=0 mm (mezzeria)"
         },
         {
           "type": "circle",
@@ -118,7 +118,7 @@
           "cy": 0,
           "diameter": 8,
           "kind": "circle",
-          "comment": "hole at Z=175 mm (inset 25 mm from end)"
+          "comment": "foro a Z=+75 mm"
         }
       ]
     },
@@ -127,7 +127,7 @@
       "type": "cut",
       "sketchId": "s4",
       "throughAll": true,
-      "comment": "cut 3x Ø8 holes through web thickness (3 mm) along X",
+      "comment": "Taglia 3x Ø8 passanti attraverso lo spessore del dorso (3 mm lungo X).",
       "sketch": "s4"
     }
   ]

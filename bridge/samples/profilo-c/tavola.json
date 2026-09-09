@@ -19,12 +19,12 @@
       "model": "CAD/ProfiloC80x40x3.SLDPRT",
       "firstAngle": true,
       "includeIso": true,
-      "comment": "Front, Top, Right + Isometric views of C-profile"
+      "comment": "Viste Front, Top, Right + Isometrica del profilo a C"
     },
     {
       "id": "dm1",
       "type": "modelDimensions",
-      "comment": "auto-retrieve all model dimensions: H=80, B=40, t=3, L=200, hole Ø8, inset 25"
+      "comment": "Quote automatiche: H=80, B=40, t=3, L=200, fori Ø8, inset 25 mm, passo 75 mm"
     },
     {
       "id": "an1",
