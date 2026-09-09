@@ -408,7 +408,10 @@ function normalizeContour(raw: unknown): unknown {
     const diameter = numish(rec.diameter) ?? (numish(rec.radius) != null ? numish(rec.radius)! * 2 : 0)
     return { ...rest, kind: "circle", cx, cy, diameter }
   }
-  if (kind === "line" || kind === "linea") return { ...rest, kind: "line" }
+  if (kind === "line" || kind === "linea" || kind === "centerline" || kind === "asse") {
+    const construction = kind === "centerline" || kind === "asse" || rec.construction === true
+    return { ...rest, kind: "line", construction }
+  }
   if (rec.kind === "rectangle" || rec.kind === "circle" || rec.kind === "line") {
     return { ...rest, kind: rec.kind, cx, cy }
   }

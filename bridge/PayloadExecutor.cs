@@ -586,11 +586,42 @@ internal sealed partial class PayloadExecutor
             }
         }
 
-        dims = Math.Max(dims, QuoteActiveSketch(model, sketchMgr));
+        // FullyDefineSketch (Equal/Concentric/Tangent) snaps flange-hole circles
+        // onto existing revolve edges and changes Ø (Ø6.5 → Ø16.5). Skip it when
+        // every contour is a circle off the origin; still add diameter/offset dims.
+        if (IsOffCenterCircleSketch(contours))
+        {
+            try { sketchMgr.AutoInference = false; } catch { /* ignore */ }
+            EnableVisibleDimensions(model);
+            dims = Math.Max(dims, DimensionAllSegments(model) + DimensionCentersFromOrigin(model));
+            RevealAllDisplayDimensions(model);
+            Step("QuoteActiveSketch", true, "skip FullyDefineSketch (fori decentrati)");
+        }
+        else
+        {
+            dims = Math.Max(dims, QuoteActiveSketch(model, sketchMgr));
+        }
         CaptureQuotedSketch(model);
         sketchMgr.InsertSketch(false);
         RememberLatest(model, op.Id, op.Name);
         Step("SketchManager", true, $"{n} contorni su {plane}, {dims} quote");
+    }
+
+    private static bool IsOffCenterCircleSketch(JsonElement? contours)
+    {
+        if (contours is not { ValueKind: JsonValueKind.Array } arr || arr.GetArrayLength() == 0)
+            return false;
+        var anyOff = false;
+        foreach (var c in arr.EnumerateArray())
+        {
+            var kind = c.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "";
+            if (!kind.Equals("circle", StringComparison.OrdinalIgnoreCase))
+                return false;
+            var cx = c.TryGetProperty("cx", out var x) && x.ValueKind == JsonValueKind.Number ? x.GetDouble() : 0;
+            var cy = c.TryGetProperty("cy", out var y) && y.ValueKind == JsonValueKind.Number ? y.GetDouble() : 0;
+            if (Math.Abs(cx) > 0.5 || Math.Abs(cy) > 0.5) anyOff = true;
+        }
+        return anyOff;
     }
 
     private bool DrawContour(ModelDoc2 model, ISketchManager sketchMgr, JsonElement c, string units, ref int dims)

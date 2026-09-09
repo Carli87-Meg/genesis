@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaBoccolaFlangiata",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaBoccolaFlangiata.SLDDRW",
+    "snapshotPath": "Export/TavolaBoccolaFlangiata.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/BoccolaFlangiata.SLDPRT",
+      "firstAngle": true,
+      "includeIso": true,
+      "scale": 1
+    },
+    {
+      "id": "dm1",
+      "type": "modelDimensions",
+      "views": "all"
+    },
+    {
+      "id": "an1",
+      "type": "annotation",
+      "text": "Øesterno 30 | Øinterno 12 | L 40 | Flangia Ø50 sp.5 | 4x Ø6.5 su PCD Ø40",
+      "x": 0.02,
+      "y": 0.06
+    },
+    {
+      "id": "an2",
+      "type": "annotation",
+      "text": "Materiale: Acciaio C45 | Peso: ~0.22 kg",
+      "x": 0.02,
+      "y": 0.04
+    },
+    {
+      "id": "an3",
+      "type": "annotation",
+      "text": "Cartiglio_CM",
+      "x": 0.02,
+      "y": 0.27
+    }
+  ]
+}
