@@ -125,6 +125,10 @@ export type CadOperation =
       diameter?: number
       /** mm, X del foro in coordinate pezzo (due fori Ø uguali sulle fiancate) */
       holeX?: number
+      /** mm, Y 3D del cilindro (spessore). Su Top lo sketch Y è holeZ. */
+      holeY?: number
+      /** mm, Z 3D del cilindro (= sketch Y sul piano Top) */
+      holeZ?: number
     }
   | {
       id: string

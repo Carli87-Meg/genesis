@@ -1929,7 +1929,9 @@ internal sealed partial class PayloadExecutor
         }
         else if (wantConcentric && wantCoincident)
         {
-            ok = concentric >= 1 && coaxial && (seatedShoulder || seated);
+            // Boccola su un foro fuori origine: il bbox non è coassiale al centro piastra
+            // (dZ = passo/2). Il mate concentric + seated sulla faccia basta.
+            ok = concentric >= 1 && (coaxial || seatedShoulder || seated);
             rule = seatedShoulder ? "concentric+seated" : "concentric+coincident+seated";
         }
         else if (wantCoincident && wantPerpendicular)

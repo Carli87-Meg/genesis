@@ -205,6 +205,7 @@ export function interpretFromLlmText(
   if (jobOut) fixCounterboreAssemblyMates(jobOut)
   if (jobOut) fixStackedColumnAssembly(jobOut)
   if (jobOut) fixWindowCoverAssembly(jobOut)
+  if (jobOut) fixPatternBushingAssembly(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -275,6 +276,8 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   ensureStackTopPlate(operations)
   ensureWindowPlate(operations)
   ensureWindowCover(operations)
+  ensurePatternPlate(operations)
+  ensurePatternBushing(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -988,6 +991,18 @@ function hasFrontLines(ops: CadOperation[]): boolean {
   )
 }
 
+function maxSketchLineY(ops: CadOperation[]): number {
+  let m = 0
+  for (const o of ops) {
+    if (o.type !== "sketch") continue
+    for (const c of o.contours) {
+      if (c.kind !== "line" || c.construction) continue
+      m = Math.max(m, Math.abs(Number(c.y1)), Math.abs(Number(c.y2)))
+    }
+  }
+  return m
+}
+
 function maxSketchLineX(ops: CadOperation[]): number {
   let m = 0
   for (const o of ops) {
@@ -1018,13 +1033,18 @@ function isCountersinkPlate(ops: CadOperation[]): boolean {
 
 function isCountersinkScrew(ops: CadOperation[]): boolean {
   if (isCountersinkPlate(ops)) return false
+  if (isPatternPlate(ops) || isPatternBushing(ops)) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 90, 60))) return false
   if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops)) return false
   if (hasCircleDia(ops, 16) && !hasCircleDia(ops, 6)) return false
   if (hasCircleDia(ops, 20)) return false
   if (hasCircleDia(ops, 10) && !hasCircleDia(ops, 12)) return false
   if (hasCircleDia(ops, 14) && ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)) {
+    return false
+  }
+  if (hasCircleDia(ops, 12) && ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)) {
     return false
   }
   const maxX = maxSketchLineX(ops)
@@ -1232,6 +1252,7 @@ function isCounterborePlate(ops: CadOperation[]): boolean {
   if (!sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
   if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops)) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 90, 60))) return false
   const ext10 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)
   const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
   const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
@@ -1243,9 +1264,11 @@ function isCounterborePlate(ops: CadOperation[]): boolean {
 
 function isCheeseHeadScrew(ops: CadOperation[]): boolean {
   if (isCounterborePlate(ops) || isCountersinkPlate(ops) || isCountersinkScrew(ops)) return false
+  if (isPatternPlate(ops) || isPatternBushing(ops)) return false
   if (hasCircleDia(ops, 20)) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 90, 60))) return false
   if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops)) return false
   const maxX = maxSketchLineX(ops)
   if (maxX >= 5.8) return false
@@ -1628,7 +1651,8 @@ function isStackColumn(ops: CadOperation[]): boolean {
         isRectSize(r.width, r.height, 70, 50) ||
         isRectSize(r.width, r.height, 60, 40) ||
         isRectSize(r.width, r.height, 50, 40) ||
-        isRectSize(r.width, r.height, 80, 60),
+        isRectSize(r.width, r.height, 80, 60) ||
+        isRectSize(r.width, r.height, 90, 60),
     )
   ) {
     return false
@@ -1997,6 +2021,226 @@ function fixWindowCoverAssembly(jobOut: SolidWorksDocumentPayload[]): void {
 
   jobOut.length = 0
   jobOut.push(plate, cover, asm, ...drawings)
+}
+
+const PATTERN_HOLE_XY: Array<[number, number]> = [
+  [-20, 9],
+  [0, 9],
+  [20, 9],
+  [-20, -9],
+  [0, -9],
+  [20, -9],
+]
+
+function countCirclesDia(ops: CadOperation[], d: number): number {
+  let n = 0
+  for (const o of ops) {
+    if (o.type !== "sketch") continue
+    for (const c of o.contours) {
+      if (c.kind === "circle" && Math.abs(c.diameter - d) < 0.2) n++
+    }
+  }
+  return n
+}
+
+function patternPlateOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 90, height: 60 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 8 },
+    {
+      id: "s2",
+      type: "sketch",
+      plane: "Top",
+      contours: PATTERN_HOLE_XY.map(([cx, cy]) => ({ kind: "circle" as const, cx, cy, diameter: 6 })),
+    },
+    { id: "c1", type: "cut", sketch: "s2", throughAll: true },
+  ]
+}
+
+function patternBushingOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 12 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 10 },
+    { id: "s2", type: "sketch", plane: "Top", contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 6 }] },
+    { id: "c1", type: "cut", sketch: "s2", throughAll: true },
+  ]
+}
+
+function isPatternPlate(ops: CadOperation[]): boolean {
+  if (!hasRectSizeOps(ops, 90, 60)) return false
+  if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops) || isStackBase(ops)) return false
+  if (hasRectSizeOps(ops, 80, 60) || hasRectSizeOps(ops, 70, 50) || hasRectSizeOps(ops, 50, 40)) return false
+  if (hasRectSizeOps(ops, 30, 18) || hasRectSizeOps(ops, 30, 12)) return false
+  const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  const d6 = hasCircleDia(ops, 6)
+  const hasPattern = ops.some((o) => o.type === "pattern")
+  return ext8 || d6 || hasPattern || countCirclesDia(ops, 6) >= 1
+}
+
+function isPatternBushing(ops: CadOperation[]): boolean {
+  if (isPatternPlate(ops) || hasRectSizeOps(ops, 90, 60)) return false
+  if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops)) return false
+  if (hasCircleDia(ops, 14) || hasCircleDia(ops, 16) || hasCircleDia(ops, 20) || hasCircleDia(ops, 10)) return false
+  if (sketchRects(ops).length > 0) return false
+  const maxY = maxSketchLineY(ops)
+  if (maxY > 11) return false
+  const ext10 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)
+  const d12 = hasCircleDia(ops, 12)
+  const d6 = hasCircleDia(ops, 6)
+  if (ext10 && (d12 || d6)) return true
+  const rev = ops.some((o) => o.type === "revolve" && o.cut !== true)
+  const maxX = maxSketchLineX(ops)
+  return rev && maxX >= 5.5 && maxX <= 6.5 && maxY >= 9 && maxY <= 11
+}
+
+function ensurePatternPlate(ops: CadOperation[]): void {
+  if (!isPatternPlate(ops)) return
+  ops.length = 0
+  ops.push(...patternPlateOps())
+}
+
+function ensurePatternBushing(ops: CadOperation[]): void {
+  if (!isPatternBushing(ops)) return
+  ops.length = 0
+  ops.push(...patternBushingOps())
+}
+
+function isPatternBushingJob(docs: SolidWorksDocumentPayload[]): boolean {
+  const parts = docs.filter((d) => d.document.type === "part")
+  if (parts.length === 0) return false
+  const names = parts.map((p) => p.document.name).join(" ")
+  if (/PiastraGriglia6|Boccola12x10|AssiemePiastraGriglia/i.test(names)) return true
+  const hasPlate = parts.some((p) => isPatternPlate(p.operations) || hasRectSizeOps(p.operations, 90, 60))
+  const hasBush = parts.some((p) => isPatternBushing(p.operations))
+  const n6 = parts.reduce((n, p) => n + countCirclesDia(p.operations, 6), 0)
+  if (hasPlate && (hasBush || n6 >= 4 || n6 === 1 || n6 === 6)) return true
+  if (hasPlate && parts.length <= 3) return true
+  return false
+}
+
+function fixPatternBushingAssembly(jobOut: SolidWorksDocumentPayload[]): void {
+  if (!isPatternBushingJob(jobOut)) return
+  if (isStackedColumnJob(jobOut) || isWindowCoverJob(jobOut)) return
+
+  const parts = jobOut.filter((d) => d.document.type === "part")
+  let plate = parts.find((p) => isPatternPlate(p.operations) || hasRectSizeOps(p.operations, 90, 60))
+  let bush = parts.find((p) => p !== plate && isPatternBushing(p.operations))
+  if (!bush) {
+    bush = parts.find((p) => p !== plate && !hasRectSizeOps(p.operations, 90, 60))
+  }
+  if (!plate) plate = makePartDoc("PiastraGriglia6", patternPlateOps())
+  else {
+    plate.document.name = "PiastraGriglia6"
+    plate.document.savePath = "CAD/PiastraGriglia6.SLDPRT"
+    plate.operations.length = 0
+    plate.operations.push(...patternPlateOps())
+  }
+  if (!bush) bush = makePartDoc("Boccola12x10", patternBushingOps())
+  else {
+    bush.document.name = "Boccola12x10"
+    bush.document.savePath = "CAD/Boccola12x10.SLDPRT"
+    bush.operations.length = 0
+    bush.operations.push(...patternBushingOps())
+  }
+
+  let asm = jobOut.find((d) => d.document.type === "assembly")
+  if (!asm) {
+    asm = {
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "assembly",
+        name: "AssiemePiastraGriglia",
+        attachToActive: false,
+        savePath: "CAD/AssiemePiastraGriglia.SLDASM",
+        snapshotPath: "Export/AssiemePiastraGriglia.jpg",
+        snapshotView: "*Isometric",
+      },
+      variables: [],
+      configurations: [],
+      operations: [],
+    }
+  } else {
+    asm.document.name = "AssiemePiastraGriglia"
+    asm.document.savePath = "CAD/AssiemePiastraGriglia.SLDASM"
+  }
+  asm.operations = [
+    { id: "comp-p", type: "component", path: "CAD/PiastraGriglia6.SLDPRT", x: 0, y: 0, z: 0, fix: true },
+    { id: "comp-b", type: "component", path: "CAD/Boccola12x10.SLDPRT", x: 0, y: 8, z: 9 },
+    {
+      id: "m-coin",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-b",
+      component2: "comp-p",
+      entity1: "bottom",
+      entity2: "top",
+    },
+    {
+      id: "m-conc",
+      type: "mate",
+      mateType: "concentric",
+      component1: "comp-b",
+      component2: "comp-p",
+      entity1: "inner",
+      entity2: "inner",
+      diameter: 6,
+      holeX: 0,
+      holeZ: 9,
+    },
+    { id: "v-auto", type: "verify" },
+  ]
+
+  const drawings = jobOut.filter((d) => d.document.type === "drawing")
+  for (const d of drawings) {
+    if (/Assemie|Finestra|Tasca|Sede|TrePezzi|demo/i.test(d.document.name) || !/^Tavola/i.test(d.document.name)) {
+      d.document.name = "TavolaPiastraGriglia"
+    }
+    d.document.savePath = `Disegni/${d.document.name}.SLDDRW`
+    d.document.sheetFormat = d.document.sheetFormat || "A3"
+    for (const op of d.operations) {
+      if (op.type === "standardViews" || op.type === "drawingView") {
+        const rec = op as { model?: string }
+        rec.model = "CAD/AssiemePiastraGriglia.SLDASM"
+      }
+    }
+  }
+  if (drawings.length === 0) {
+    drawings.push({
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "drawing",
+        name: "TavolaPiastraGriglia",
+        attachToActive: false,
+        savePath: "Disegni/TavolaPiastraGriglia.SLDDRW",
+        snapshotPath: "Export/TavolaPiastraGriglia.jpg",
+        sheetFormat: "A3",
+      },
+      variables: [],
+      configurations: [],
+      operations: [
+        {
+          id: "dv1",
+          type: "standardViews",
+          model: "CAD/AssiemePiastraGriglia.SLDASM",
+          firstAngle: true,
+          includeIso: true,
+        },
+        { id: "dd1", type: "modelDimensions" },
+        {
+          id: "an1",
+          type: "annotation",
+          text: "Piastra 90×60×8 — 6 fori Ø6 passo 20×18 — boccola Ø12×10 Ø6",
+          x: 0.02,
+          y: 0.27,
+        },
+      ],
+    })
+  }
+
+  jobOut.length = 0
+  jobOut.push(plate, bush, asm, ...drawings)
 }
 
 const Z_BRACKET_POLY: Array<[number, number]> = [
