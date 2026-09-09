@@ -1733,7 +1733,15 @@ internal sealed partial class PayloadExecutor
         var coincidentOk = coincident >= 1 && seated;
         string rule;
         bool ok;
-        if (wantConcentric && wantCoincident)
+        var sandwichOk = SandwichBothFaces(items, out var sandwichFaces, out var sandwichInfo);
+        if (wantConcentric && wantCoincident && items.Count >= 3)
+        {
+            ok = concentric >= 1 && coincident >= 2 && coaxial && sandwichOk;
+            rule = "concentric+sandwich+seated";
+            if (!string.IsNullOrEmpty(sandwichInfo))
+                pairInfo = string.IsNullOrEmpty(pairInfo) ? sandwichInfo : sandwichInfo + " " + pairInfo;
+        }
+        else if (wantConcentric && wantCoincident)
         {
             ok = concentric >= 1 && coaxial && (seatedShoulder || seated);
             rule = seatedShoulder ? "concentric+seated" : "concentric+coincident+seated";
@@ -1766,7 +1774,7 @@ internal sealed partial class PayloadExecutor
         }
 
         Step("verify", ok,
-            $"n={items.Count} concentric={concentric} coincident={coincident} perpendicular={perpendicular} coaxial={coaxial} seated={seated} perpGeom={platesPerp} shortEndWalls={shortEndWalls} rule={rule} {pairInfo}");
+            $"n={items.Count} concentric={concentric} coincident={coincident} perpendicular={perpendicular} coaxial={coaxial} seated={seated} sandwich={sandwichFaces} perpGeom={platesPerp} shortEndWalls={shortEndWalls} rule={rule} {pairInfo}");
     }
 
     private bool PayloadRequestsMateKind(string kind)
@@ -1809,6 +1817,52 @@ internal sealed partial class PayloadExecutor
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Distanziale in mezzo a due piastre: contatto su entrambe le facce
+    /// (non due piastre dallo stesso lato). Asse = spessore delle piastre.
+    /// </summary>
+    private static bool SandwichBothFaces(
+        List<(string Name, double[] Box)> items,
+        out int faces,
+        out string detail)
+    {
+        faces = 0;
+        detail = "";
+        if (items.Count != 3) return false;
+
+        var ordered = items.OrderByDescending(i => PlateFootprint(i.Box)).ToList();
+        var p1 = ordered[0];
+        var p2 = ordered[1];
+        var spacer = ordered[2];
+        var axis = ThicknessAxis(p1.Box);
+        var sLo = Math.Min(spacer.Box[axis], spacer.Box[axis + 1]);
+        var sHi = Math.Max(spacer.Box[axis], spacer.Box[axis + 1]);
+
+        bool OnLow(double[] b)
+        {
+            var hi = Math.Max(b[axis], b[axis + 1]);
+            return Math.Abs(hi - sLo) < 2.5 && FacesTouch(b, spacer.Box);
+        }
+
+        bool OnHigh(double[] b)
+        {
+            var lo = Math.Min(b[axis], b[axis + 1]);
+            return Math.Abs(lo - sHi) < 2.5 && FacesTouch(b, spacer.Box);
+        }
+
+        if (FacesTouch(p1.Box, spacer.Box)) faces++;
+        if (FacesTouch(p2.Box, spacer.Box)) faces++;
+        var p1Low = OnLow(p1.Box);
+        var p1High = OnHigh(p1.Box);
+        var p2Low = OnLow(p2.Box);
+        var p2High = OnHigh(p2.Box);
+        var bothSides = (p1Low && p2High) || (p1High && p2Low);
+        detail =
+            $"sandwich={faces} bothSides={bothSides} spacer={sLo:0.02}..{sHi:0.02} " +
+            $"p1={(p1Low ? "low" : p1High ? "high" : "none")} p2={(p2Low ? "low" : p2High ? "high" : "none")}";
+        return bothSides && faces >= 2;
     }
 
     private static double MinExtent(double[] b)
