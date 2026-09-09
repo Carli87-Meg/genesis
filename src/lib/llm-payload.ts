@@ -241,6 +241,9 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   }
   if (operations.length === 0) return null
   linkSketches(operations)
+  const split = splitTwinRectangleSketches(operations)
+  operations.length = 0
+  operations.push(...split)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -518,6 +521,40 @@ function linkSketches(ops: CadOperation[]) {
       if (!rec.profile) rec.profile = rec.sketch || (sketchIds.length >= 2 ? sketchIds[1] : lastSketch)
     }
   }
+}
+
+/** Due rettangoli nello stesso schizzo (profilo T) si sovrappongono e FeatureExtrusion fallisce. */
+function splitTwinRectangleSketches(ops: CadOperation[]): CadOperation[] {
+  const out: CadOperation[] = []
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i]
+    if (op.type !== "sketch") {
+      out.push(op)
+      continue
+    }
+    const rects = op.contours.filter((c) => c.kind === "rectangle")
+    if (rects.length < 2) {
+      out.push(op)
+      continue
+    }
+    const plane = /front/i.test(String(op.plane || "")) ? "Top" : op.plane || "Top"
+    const follow = ops[i + 1]
+    const depth =
+      follow && follow.type === "extrude" && typeof follow.depth === "number" ? follow.depth : 60
+    out.push({ ...op, plane, contours: [rects[0]] })
+    if (follow && follow.type === "extrude") {
+      out.push(follow)
+      i++
+    } else {
+      out.push({ id: `${op.id}-e0`, type: "extrude", sketch: op.id, depth, merge: true })
+    }
+    for (let k = 1; k < rects.length; k++) {
+      const sid = `${op.id}-leg${k}`
+      out.push({ id: sid, type: "sketch", plane, contours: [rects[k]] })
+      out.push({ id: `${op.id}-boss${k}`, type: "extrude", sketch: sid, depth, merge: true })
+    }
+  }
+  return out
 }
 
 function recenterCornerOrigin(ops: CadOperation[]) {

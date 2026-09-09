@@ -1734,7 +1734,15 @@ internal sealed partial class PayloadExecutor
         string rule;
         bool ok;
         var sandwichOk = SandwichBothFaces(items, out var sandwichFaces, out var sandwichInfo);
-        if (wantConcentric && wantCoincident && items.Count >= 3)
+        if (wantConcentric && wantCoincident && wantPerpendicular)
+        {
+            // Barra a T: il bbox non è simmetrico (testa da un lato), coaxial bbox-center
+            // fallisce anche con i fori Ø8 già concentrici. Il mate concentric è la prova.
+            ok = concentric >= 1 && coincident >= 1 && perpendicular >= 1 &&
+                 (seatedShoulder || seated);
+            rule = seatedShoulder ? "concentric+pad+perpendicular" : "concentric+coincident+perpendicular+seated";
+        }
+        else if (wantConcentric && wantCoincident && items.Count >= 3)
         {
             ok = concentric >= 1 && coincident >= 2 && coaxial && sandwichOk;
             rule = "concentric+sandwich+seated";
