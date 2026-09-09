@@ -56,7 +56,13 @@ public sealed class CadOperation
             return null;
         }
 
-        return Extra.TryGetValue(name, out var el) ? el : null;
+        if (Extra.TryGetValue(name, out var el)) return el;
+        foreach (var kv in Extra)
+        {
+            if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase)) return kv.Value;
+        }
+
+        return null;
     }
 
     public string Str(string name, string fallback = "")
@@ -75,7 +81,7 @@ public sealed class CadOperation
                 : fallback;
     }
 
-    public bool Has(string name) => Extra is not null && Extra.ContainsKey(name);
+    public bool Has(string name) => Field(name) is not null;
 
     public double Num(string name, double fallback = 0)
     {

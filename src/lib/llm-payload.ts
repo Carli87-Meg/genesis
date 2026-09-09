@@ -69,6 +69,11 @@ const TYPE_ALIAS: Record<string, string> = {
   fillet: "fillet",
   featurefillet: "fillet",
   raggio: "fillet",
+  revolvecut: "revolve",
+  revolve_cut: "revolve",
+  "revolve-cut": "revolve",
+  tagliorivoluzione: "revolve",
+  svasatura: "revolve",
 }
 
 const PLANE_ALIAS: Record<string, "Front" | "Top" | "Right"> = {
@@ -196,6 +201,7 @@ export function interpretFromLlmText(
   if (jobOut) fillKitDefaults(jobOut)
   if (jobOut) fixZBracketAssemblyMates(jobOut)
   if (jobOut) foldStandaloneRibIntoPlate(jobOut)
+  if (jobOut) fixCountersinkAssemblyMates(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -257,6 +263,8 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   ensureThicknessChamfer(operations)
   ensureThicknessFillet(operations)
   ensurePlateRib(operations)
+  ensureCountersinkPlate(operations)
+  normalizeCountersinkScrew(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -447,17 +455,36 @@ function normalizeOp(raw: unknown, index: number): CadOperation | null {
     }
     if (next.allEdges === undefined) next.allEdges = true
   }
+  const rawLower = rawType.toLowerCase()
+  if (
+    rawLower === "revolvecut" ||
+    rawLower === "revolve_cut" ||
+    rawLower === "revolve-cut" ||
+    rawLower === "tagliorivoluzione" ||
+    rawLower === "svasatura"
+  ) {
+    next.cut = true
+  }
+  if (aliased === "revolve") {
+    if (next.cut === undefined && (next.isCut === true || next.cutExtrude === true)) next.cut = true
+    if (typeof next.angle !== "number") next.angle = 360
+  }
+  if (aliased === "cut" && numish(next.angle) != null && Number(next.angle) > 0) {
+    next.type = "revolve"
+    next.cut = true
+    if (typeof next.angle !== "number") next.angle = numish(next.angle)
+  }
   return next as CadOperation
 }
 
 function inferOpType(rec: Record<string, unknown>): string {
   if (Array.isArray(rec.contours) || rec.plane) return "sketch"
+  if (typeof rec.angle === "number") return "revolve"
   if (rec.throughAll === true) return "cut"
   if (rec.cut === true) return "cut"
   if (typeof rec.depth === "number" && rec.sketch) return "extrude"
   if (typeof rec.depth === "number") return rec.cut ? "cut" : "extrude"
   if (typeof rec.diameter === "number") return "hole"
-  if (typeof rec.angle === "number") return "revolve"
   if (rec.profile && rec.path) return "sweep"
   return ""
 }
@@ -919,6 +946,333 @@ function foldStandaloneRibIntoPlate(docs: SolidWorksDocumentPayload[]): void {
   }
   for (let i = docs.length - 1; i >= 0; i--) {
     if (ribNames.has(docs[i].document.name)) docs.splice(i, 1)
+  }
+}
+
+function cskPlateTriangle(): Extract<CadOperation, { type: "sketch" }>["contours"] {
+  return [
+    { kind: "line", x1: 0, y1: -3, x2: 0, y2: 3, construction: true },
+    { kind: "line", x1: 3, y1: 3, x2: 6, y2: 3, construction: false },
+    { kind: "line", x1: 6, y1: 3, x2: 3, y2: 0, construction: false },
+    { kind: "line", x1: 3, y1: 0, x2: 3, y2: 3, construction: false },
+  ]
+}
+
+function cskScrewSection(): Extract<CadOperation, { type: "sketch" }>["contours"] {
+  return [
+    { kind: "line", x1: 0, y1: 0, x2: 0, y2: 16, construction: true },
+    { kind: "line", x1: 0, y1: 0, x2: 6, y2: 0, construction: false },
+    { kind: "line", x1: 6, y1: 0, x2: 3, y2: 3, construction: false },
+    { kind: "line", x1: 3, y1: 3, x2: 3, y2: 16, construction: false },
+    { kind: "line", x1: 3, y1: 16, x2: 0, y2: 16, construction: false },
+    { kind: "line", x1: 0, y1: 16, x2: 0, y2: 0, construction: false },
+  ]
+}
+
+function hasFrontLines(ops: CadOperation[]): boolean {
+  return ops.some(
+    (o) =>
+      o.type === "sketch" &&
+      /front/i.test(String(o.plane || "")) &&
+      o.contours.some((c) => c.kind === "line" && !c.construction),
+  )
+}
+
+function isCountersinkPlate(ops: CadOperation[]): boolean {
+  if (!sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
+  if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops)) return false
+  const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
+  if (ext8 && hasCircleDia(ops, 8)) return false
+  if (hasCircleDia(ops, 10) && !hasCircleDia(ops, 6)) return false
+  if (hasCircleDia(ops, 16)) return false
+  const d6 = hasCircleDia(ops, 6)
+  const d12 = hasCircleDia(ops, 12)
+  const rev = ops.some((o) => o.type === "revolve")
+  if (ext8 && !ext6 && !d6) return false
+  return ext6 || d6 || d12 || rev || hasFrontLines(ops)
+}
+
+function isCountersinkScrew(ops: CadOperation[]): boolean {
+  if (isCountersinkPlate(ops)) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
+  if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops)) return false
+  if (hasCircleDia(ops, 16) && !hasCircleDia(ops, 6)) return false
+  if (hasCircleDia(ops, 20)) return false
+  if (hasCircleDia(ops, 14) && ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)) {
+    return false
+  }
+  const rev = ops.some((o) => o.type === "revolve")
+  const ext16 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 16) < 0.6)
+  const d6 = hasCircleDia(ops, 6)
+  const d12 = hasCircleDia(ops, 12)
+  return rev || (d6 && ext16) || (d6 && d12) || (hasFrontLines(ops) && (d6 || d12 || ext16))
+}
+
+/** Piastra 50×40×6 + foro Ø6 + svasatura conica 90° Ø12 (revolve cut), non un Ø6 cilindrico. */
+function ensureCountersinkPlate(ops: CadOperation[]): void {
+  if (!isCountersinkPlate(ops)) return
+
+  const plateHit = sketchRects(ops).find((r) => isRectSize(r.width, r.height, 50, 40))
+  if (!plateHit) return
+  const plateSketch = plateHit.sketch
+  plateSketch.plane = "Top"
+  for (const c of plateSketch.contours) {
+    if (c.kind !== "rectangle" || !isRectSize(Number(c.width), Number(c.height), 50, 40)) continue
+    c.cx = 0
+    c.cy = 0
+    c.width = 50
+    c.height = 40
+  }
+  for (const op of ops) {
+    if (op.type !== "sketch") continue
+    if (!op.contours.some((c) => c.kind === "rectangle")) continue
+    op.contours = op.contours.filter((c) => c.kind === "rectangle" || (c.kind === "line" && c.construction))
+  }
+
+  let plateExt = extrudeForSketch(ops, plateSketch.id)
+  if (plateExt && plateExt.type === "extrude") {
+    plateExt.depth = 6
+  } else {
+    plateExt = { id: uniqueOpId(ops, "e-plate"), type: "extrude", sketch: plateSketch.id, depth: 6 }
+    ops.splice(ops.indexOf(plateSketch) + 1, 0, plateExt)
+  }
+
+  for (let i = ops.length - 1; i >= 0; i--) {
+    const op = ops[i]
+    if (op.type === "chamfer" || op.type === "fillet") {
+      ops.splice(i, 1)
+      continue
+    }
+    if (op.type === "hole" && Math.abs(op.diameter - 12) < 0.2) {
+      ops.splice(i, 1)
+    }
+  }
+
+  for (const op of ops) {
+    if (op.type !== "sketch") continue
+    const d12only = op.contours.filter((c) => c.kind === "circle" && Math.abs(c.diameter - 12) < 0.2)
+    const keep = op.contours.filter(
+      (c) => !(c.kind === "circle" && Math.abs(c.diameter - 12) < 0.2 && Math.abs(c.cx) < 0.2 && Math.abs(c.cy) < 0.2),
+    )
+    if (d12only.length > 0 && keep.length !== op.contours.length) {
+      op.contours = keep
+    }
+  }
+
+  for (let i = ops.length - 1; i >= 0; i--) {
+    const op = ops[i]
+    if (op.type !== "sketch") continue
+    if (op.contours.length === 0) {
+      const sid = op.id
+      ops.splice(i, 1)
+      for (let j = ops.length - 1; j >= 0; j--) {
+        const f = ops[j]
+        if ((f.type === "cut" || f.type === "extrude" || f.type === "revolve") && f.sketch === sid) {
+          ops.splice(j, 1)
+        }
+      }
+    }
+  }
+
+  let holeSketch = ops.find(
+    (o) =>
+      o.type === "sketch" &&
+      o.contours.some((c) => c.kind === "circle" && Math.abs(c.diameter - 6) < 0.2) &&
+      !o.contours.some((c) => c.kind === "rectangle"),
+  )
+  if (!holeSketch || holeSketch.type !== "sketch") {
+    const sid = uniqueOpId(ops, "s-hole")
+    holeSketch = {
+      id: sid,
+      type: "sketch",
+      plane: "Top",
+      contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 6 }],
+    }
+    const at = ops.indexOf(plateExt) >= 0 ? ops.indexOf(plateExt) + 1 : ops.indexOf(plateSketch) + 1
+    ops.splice(at, 0, holeSketch)
+  } else {
+    holeSketch.plane = "Top"
+    for (const c of holeSketch.contours) {
+      if (c.kind !== "circle" || Math.abs(c.diameter - 6) >= 0.2) continue
+      c.cx = 0
+      c.cy = 0
+      c.diameter = 6
+    }
+  }
+
+  let holeCut = ops.find((o) => o.type === "cut" && o.sketch === holeSketch.id)
+  if (holeCut && holeCut.type === "cut") {
+    holeCut.throughAll = true
+    holeCut.depth = undefined
+  } else if (!ops.some((o) => o.type === "hole" && Math.abs(o.diameter - 6) < 0.2)) {
+    holeCut = { id: uniqueOpId(ops, "c-hole"), type: "cut", sketch: holeSketch.id, throughAll: true }
+    ops.splice(ops.indexOf(holeSketch) + 1, 0, holeCut)
+  }
+
+  for (const op of ops) {
+    if (op.type !== "cut") continue
+    if (op.sketch !== holeSketch.id) continue
+    op.throughAll = true
+    op.depth = undefined
+  }
+
+  let cskSketch = ops.find(
+    (o) =>
+      o.type === "sketch" &&
+      /front/i.test(String(o.plane || "")) &&
+      o.contours.some((c) => c.kind === "line") &&
+      o.id !== plateSketch.id &&
+      o.id !== holeSketch.id,
+  )
+  if (!cskSketch || cskSketch.type !== "sketch") {
+    const sid = uniqueOpId(ops, "s-csk")
+    cskSketch = { id: sid, type: "sketch", plane: "Front", contours: cskPlateTriangle() }
+    const afterHole = holeCut && ops.indexOf(holeCut) >= 0 ? ops.indexOf(holeCut) + 1 : ops.indexOf(holeSketch) + 1
+    ops.splice(afterHole, 0, cskSketch)
+  } else {
+    cskSketch.plane = "Front"
+    cskSketch.contours = cskPlateTriangle()
+  }
+
+  for (const op of ops) {
+    if (op.type !== "revolve") continue
+    if (op.sketch === cskSketch.id) op.cut = true
+  }
+
+  let cskRev = ops.find((o) => o.type === "revolve" && o.sketch === cskSketch.id)
+  if (cskRev && cskRev.type === "revolve") {
+    cskRev.angle = 360
+    cskRev.cut = true
+  } else {
+    const stray = ops.find((o) => o.type === "revolve" && o.cut === true)
+    if (stray && stray.type === "revolve") {
+      stray.sketch = cskSketch.id
+      stray.angle = 360
+      stray.cut = true
+      cskRev = stray
+    } else {
+      cskRev = {
+        id: uniqueOpId(ops, "r-csk"),
+        type: "revolve",
+        sketch: cskSketch.id,
+        angle: 360,
+        cut: true,
+      }
+      ops.splice(ops.indexOf(cskSketch) + 1, 0, cskRev)
+    }
+  }
+
+  const ordered: CadOperation[] = []
+  const seen = new Set<string>()
+  const take = (op: CadOperation | undefined) => {
+    if (!op || seen.has(op.id)) return
+    seen.add(op.id)
+    ordered.push(op)
+  }
+  take(plateSketch)
+  take(plateExt)
+  take(holeSketch)
+  take(ops.find((o) => o.type === "cut" && o.sketch === holeSketch.id))
+  take(cskSketch)
+  take(ops.find((o) => o.type === "revolve" && o.sketch === cskSketch.id))
+  ops.length = 0
+  ops.push(...ordered)
+}
+
+/** Vite testa svasata = un solo PRT, rivoluzione gambo Ø6 + testa Ø12, non un cilindro. */
+function normalizeCountersinkScrew(ops: CadOperation[]): void {
+  if (!isCountersinkScrew(ops)) return
+  const sid = uniqueOpId(ops, "s-vite")
+  ops.length = 0
+  ops.push(
+    { id: sid, type: "sketch", plane: "Front", contours: cskScrewSection() },
+    { id: uniqueOpId(ops, "r-vite"), type: "revolve", sketch: sid, angle: 360 },
+  )
+}
+
+function pathMatches(op: CadOperation, name: string): boolean {
+  if (!name) return false
+  const rec = op as CadOperation & { path?: string; name?: string }
+  const blob = `${rec.path || ""} ${rec.name || ""}`
+  return blob.toLowerCase().includes(name.toLowerCase())
+}
+
+function fixCountersinkAssemblyMates(jobOut: SolidWorksDocumentPayload[]): void {
+  const plate = jobOut.find((d) => d.document.type === "part" && isCountersinkPlate(d.operations))
+  const screw = jobOut.find((d) => d.document.type === "part" && isCountersinkScrew(d.operations))
+  if (!plate || !screw) return
+
+  const bannedPlate = /Piastra50Foro10|Piastra50Raccordo|Piastra50Foro16|Piastra60Smusso|PiastraNervatura/i
+  const bannedScrew = /Boccola14x10|BoccolaGuida|Distanziale|Perno8x30|Albero/i
+  if (bannedPlate.test(plate.document.name)) {
+    plate.document.name = "Piastra50Svasata"
+    plate.document.savePath = "CAD/Piastra50Svasata.SLDPRT"
+  }
+  if (bannedScrew.test(screw.document.name)) {
+    screw.document.name = "ViteSvasata6x16"
+    screw.document.savePath = "CAD/ViteSvasata6x16.SLDPRT"
+  }
+
+  for (const d of jobOut) {
+    if (d.document.type !== "assembly") continue
+    if (/Assemie/i.test(d.document.name) || !/^Assieme/i.test(d.document.name)) {
+      d.document.name = "AssiemePiastraSvasata"
+      d.document.savePath = "CAD/AssiemePiastraSvasata.SLDASM"
+    }
+    const plateComp = d.operations.find((op) => op.type === "component" && pathMatches(op, plate.document.name))
+    const screwComp = d.operations.find((op) => op.type === "component" && pathMatches(op, screw.document.name))
+    const comps = d.operations.filter((op) => op.type === "component")
+    const pComp = plateComp && plateComp.type === "component" ? plateComp : comps[0]
+    const sComp = screwComp && screwComp.type === "component" ? screwComp : comps.find((c) => c !== pComp)
+    if (!pComp || pComp.type !== "component" || !sComp || sComp.type !== "component") continue
+    pComp.fix = true
+    pComp.path = plate.document.savePath || pComp.path
+    sComp.path = screw.document.savePath || sComp.path
+    if (sComp.y == null || Math.abs(Number(sComp.y) - 3) > 8) sComp.y = 3
+
+    let coincident = d.operations.find((op) => op.type === "mate" && op.mateType === "coincident")
+    if (coincident && coincident.type === "mate") {
+      if (coincident.component1 === sComp.id || pathMatches(sComp, coincident.component1)) {
+        coincident.entity1 = "bottom"
+        coincident.entity2 = coincident.entity2 || "top"
+        coincident.component1 = sComp.id
+        coincident.component2 = pComp.id
+      } else {
+        coincident.entity2 = "bottom"
+        coincident.entity1 = coincident.entity1 || "top"
+        coincident.component1 = pComp.id
+        coincident.component2 = sComp.id
+      }
+    } else {
+      coincident = {
+        id: uniqueOpId(d.operations, "m-coin"),
+        type: "mate",
+        mateType: "coincident",
+        component1: sComp.id,
+        component2: pComp.id,
+        entity1: "bottom",
+        entity2: "top",
+      }
+      d.operations.push(coincident)
+    }
+
+    let concentric = d.operations.find((op) => op.type === "mate" && op.mateType === "concentric")
+    if (concentric && concentric.type === "mate") {
+      concentric.diameter = 6
+      concentric.component1 = sComp.id
+      concentric.component2 = pComp.id
+    } else {
+      concentric = {
+        id: uniqueOpId(d.operations, "m-conc"),
+        type: "mate",
+        mateType: "concentric",
+        component1: sComp.id,
+        component2: pComp.id,
+        diameter: 6,
+      }
+      d.operations.push(concentric)
+    }
   }
 }
 

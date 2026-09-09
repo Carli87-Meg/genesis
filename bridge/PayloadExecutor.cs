@@ -14,6 +14,7 @@ internal sealed partial class PayloadExecutor
     private ISldWorks? _sw;
     private string? _sketchStillPath;
     private bool _quotedStillSaved;
+    private double _sketchYOffsetM;
 
     public (List<ExecStep> Steps, List<FeatureInfo> Features, string? DocTitle, int? DocType, string? SavedPath, string? SnapshotPath) Execute(
         ISldWorks swApp,
@@ -585,6 +586,7 @@ internal sealed partial class PayloadExecutor
 
         var sketchMgr = (ISketchManager)model.SketchManager;
         sketchMgr.InsertSketch(true);
+        _sketchYOffsetM = 0;
         try
         {
             try { sketchMgr.AddToDB = false; } catch { /* ignore */ }
@@ -592,6 +594,17 @@ internal sealed partial class PayloadExecutor
             EnableVisibleDimensions(model);
 
             var contours = op.Field("contours");
+            if (WillRevolveCut(op.Id) && plane is "Front" or "front")
+            {
+                var bodyTop = BodyYMaxMm(model);
+                var sketchTop = MaxContourYMm(contours);
+                if (!double.IsNaN(bodyTop) && !double.IsNaN(sketchTop))
+                {
+                    _sketchYOffsetM = (bodyTop - sketchTop) / 1000.0;
+                    if (Math.Abs(_sketchYOffsetM) > 1e-6)
+                        Step("cskAlign", true, $"dy={_sketchYOffsetM * 1000:0.02} mm bodyYmax={bodyTop:0.02} sketchYmax={sketchTop:0.02}");
+                }
+            }
             var n = 0;
             var dims = 0;
             if (contours is { ValueKind: JsonValueKind.Array })
@@ -623,8 +636,61 @@ internal sealed partial class PayloadExecutor
         }
         finally
         {
+            _sketchYOffsetM = 0;
             ExitOpenSketchesAndRebuild(model, forceRebuild: false);
         }
+    }
+
+    private bool WillRevolveCut(string sketchId)
+    {
+        if (string.IsNullOrEmpty(sketchId)) return false;
+        foreach (var op in _ops)
+        {
+            if (!string.Equals(op.Type, "revolve", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.Equals(op.Str("sketch"), sketchId, StringComparison.OrdinalIgnoreCase)) continue;
+            if (op.Flag("cut")) return true;
+        }
+        return false;
+    }
+
+    private static double BodyYMaxMm(ModelDoc2 model)
+    {
+        try
+        {
+            if (model is not IPartDoc part) return double.NaN;
+            var bodies = AsArray(part.GetBodies2((int)swBodyType_e.swSolidBody, true));
+            if (bodies is null) return double.NaN;
+            var yMax = double.NaN;
+            foreach (var bObj in bodies)
+            {
+                if (bObj is not Body2 body) continue;
+                var box = AsDoubles(body.GetBodyBox());
+                if (box is not { Length: >= 6 }) continue;
+                var y = Math.Max(box[1], box[4]) * 1000.0;
+                if (double.IsNaN(yMax) || y > yMax) yMax = y;
+            }
+            return yMax;
+        }
+        catch
+        {
+            return double.NaN;
+        }
+    }
+
+    private static double MaxContourYMm(JsonElement? contours)
+    {
+        if (contours is not { ValueKind: JsonValueKind.Array }) return double.NaN;
+        var max = double.NaN;
+        foreach (var c in contours.Value.EnumerateArray())
+        {
+            foreach (var key in new[] { "y1", "y2", "y3", "cy" })
+            {
+                if (!c.TryGetProperty(key, out var el) || el.ValueKind != JsonValueKind.Number) continue;
+                var y = el.GetDouble();
+                if (double.IsNaN(max) || y > max) max = y;
+            }
+        }
+        return max;
     }
 
     private static bool IsOffCenterCircleSketch(JsonElement? contours)
@@ -674,8 +740,8 @@ internal sealed partial class PayloadExecutor
                 case "line":
                 {
                     var line = (ISketchSegment)sketchMgr.CreateLine(
-                        Len(c, "x1", units), Len(c, "y1", units), 0,
-                        Len(c, "x2", units), Len(c, "y2", units), 0);
+                        Len(c, "x1", units), Len(c, "y1", units) + _sketchYOffsetM, 0,
+                        Len(c, "x2", units), Len(c, "y2", units) + _sketchYOffsetM, 0);
                     if (c.TryGetProperty("construction", out var cons) && cons.ValueKind == JsonValueKind.True)
                     {
                         try { line.ConstructionGeometry = true; } catch { /* ignore */ }
@@ -686,9 +752,9 @@ internal sealed partial class PayloadExecutor
                 case "arco":
                 {
                     sketchMgr.Create3PointArc(
-                        Len(c, "x1", units), Len(c, "y1", units), 0,
-                        Len(c, "x2", units), Len(c, "y2", units), 0,
-                        Len(c, "x3", units), Len(c, "y3", units), 0);
+                        Len(c, "x1", units), Len(c, "y1", units) + _sketchYOffsetM, 0,
+                        Len(c, "x2", units), Len(c, "y2", units) + _sketchYOffsetM, 0,
+                        Len(c, "x3", units), Len(c, "y3", units) + _sketchYOffsetM, 0);
                     return true;
                 }
                 default:
@@ -824,19 +890,62 @@ internal sealed partial class PayloadExecutor
         }
 
         var angle = op.Num("angle", 360) * Math.PI / 180.0;
+        var isCut = op.Flag("cut");
+        var featMgr = (IFeatureManager)model.FeatureManager;
+        Feature? feat = null;
         try
         {
-            var featMgr = (IFeatureManager)model.FeatureManager;
-            var feat = featMgr.FeatureRevolve2(
-                true, true, false, false, false, false, 0, 0,
-                angle, 0, false, false, 0, 0,
-                0, 0, 0, true, true, true);
+            if (isCut)
+            {
+                feat = featMgr.FeatureRevolveCut2(
+                    angle, false, 0, 0, 0, true, true, false, false, false) as Feature;
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureRevolveCut2(
+                        angle, true, 0, 0, 0, true, true, false, false, false) as Feature;
+                }
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureRevolveCut(angle, false, 0, 0, 0, true, true) as Feature;
+                }
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureRevolveCut(angle, true, 0, 0, 0, true, true) as Feature;
+                }
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureRevolve2(
+                        true, true, false, true, false, false, 0, 0,
+                        angle, 0, false, false, 0, 0,
+                        0, 0, 0, false, true, true);
+                }
+                if (feat is null)
+                {
+                    feat = featMgr.FeatureRevolve2(
+                        true, true, false, true, true, false, 0, 0,
+                        angle, 0, false, false, 0, 0,
+                        0, 0, 0, false, true, true);
+                }
+            }
+            else
+            {
+                feat = featMgr.FeatureRevolve2(
+                    true, true, false, false, false, false, 0, 0,
+                    angle, 0, false, false, 0, 0,
+                    0, 0, 0, true, true, true);
+            }
+
+            var nSel = 0;
+            try { nSel = ((ISelectionMgr)model.SelectionManager).GetSelectedObjectCount2(-1); } catch { /* ignore */ }
             if (feat is not null) RememberFeature(op.Id, op.Name, feat);
-            Step("FeatureManager.FeatureRevolve2", feat is not null, $"angle={op.Num("angle", 360)}°");
+            Step(
+                isCut ? "FeatureManager.FeatureRevolveCut" : "FeatureManager.FeatureRevolve2",
+                feat is not null,
+                $"angle={op.Num("angle", 360)}° cut={isCut} sel={nSel} sketch={sketchId}");
         }
         catch (Exception ex)
         {
-            Step("FeatureManager.FeatureRevolve2", false, FormatEx(ex));
+            Step(isCut ? "FeatureManager.FeatureRevolveCut" : "FeatureManager.FeatureRevolve2", false, FormatEx(ex));
         }
     }
 
@@ -2363,7 +2472,36 @@ internal sealed partial class PayloadExecutor
                     }
                 }
 
-                return FacesTouch(b1, b2) || ShoulderCapSeated(plateBox, otherBox);
+                var touch = FacesTouch(b1, b2) || ShoulderCapSeated(plateBox, otherBox);
+                var through = ThroughHoleSeated(plateBox, otherBox);
+                if (PayloadRequestsMateKind("concentric"))
+                {
+                    var thAxis = ThicknessAxis(plateBox);
+                    var otherLen = Math.Abs(otherBox[thAxis + 1] - otherBox[thAxis]);
+                    var plateT = Math.Abs(plateBox[thAxis + 1] - plateBox[thAxis]);
+                    // Vite/perno lunghi: la coincidente a filo deve attraversare il foro,
+                    // non lasciare la testa appoggiata sopra la piastra.
+                    if (otherLen > plateT + 8)
+                        return through || ShoulderCapSeated(plateBox, otherBox);
+                }
+
+                return touch || through;
+            }
+        }
+
+        if (kind is "concentric")
+        {
+            var b1c = FindBox(assy, c1);
+            var b2c = FindBox(assy, c2);
+            if (b1c is not null && b2c is not null && PayloadRequestsMateKind("coincident"))
+            {
+                var plateBoxC = PreferPlateBox(b1c, b2c);
+                var otherBoxC = ReferenceEquals(plateBoxC, b1c) ? b2c : b1c;
+                var thAxisC = ThicknessAxis(plateBoxC);
+                var otherLenC = Math.Abs(otherBoxC[thAxisC + 1] - otherBoxC[thAxisC]);
+                var plateTC = Math.Abs(plateBoxC[thAxisC + 1] - plateBoxC[thAxisC]);
+                if (otherLenC > plateTC + 8)
+                    return ThroughHoleSeated(plateBoxC, otherBoxC) || ShoulderCapSeated(plateBoxC, otherBoxC);
             }
         }
 

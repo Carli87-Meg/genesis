@@ -52,6 +52,7 @@ export type CadOperation =
       name?: string
       sketch: string
       angle: number
+      cut?: boolean
     }
   | {
       id: string
@@ -287,7 +288,7 @@ export function opLabel(op: CadOperation): string {
     case "cut":
       return op.throughAll ? "Taglio passante" : `Taglio ${op.depth ?? ""} mm`
     case "revolve":
-      return `Rivoluzione ${op.angle}°`
+      return op.cut ? `Taglio rivoluzione ${op.angle}°` : `Rivoluzione ${op.angle}°`
     case "sweep":
       return `Sweep ${op.profile} lungo ${op.path}`
     case "hole":
