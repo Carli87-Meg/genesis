@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaPiastraPerno",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaPiastraPerno.SLDDRW",
+    "snapshotPath": "Export/TavolaPiastraPerno.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/AssiemePiastraPerno.SLDASM",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "dm1",
+      "type": "modelDimensions"
+    },
+    {
+      "id": "an1",
+      "type": "annotation",
+      "text": "Assieme Piastra90 + PernoCilindrico | Materiale: acciaio | Scala 1:1",
+      "x": 0.02,
+      "y": 0.27
+    }
+  ]
+}

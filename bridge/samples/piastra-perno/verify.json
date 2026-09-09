@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemePiastraPerno",
+    "attachToActive": false,
+    "openPath": "CAD/AssiemePiastraPerno.SLDASM",
+    "savePath": "CAD/AssiemePiastraPerno.SLDASM"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    { "id": "v1", "type": "verify" }
+  ]
+}

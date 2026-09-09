@@ -1486,7 +1486,7 @@ internal sealed partial class PayloadExecutor
         var coaxial = false;
         var seated = false;
         var pairInfo = "";
-        for (var i = 0; i < items.Count && !coaxial; i++)
+        for (var i = 0; i < items.Count; i++)
         {
             for (var j = i + 1; j < items.Count; j++)
             {
@@ -1496,26 +1496,33 @@ internal sealed partial class PayloadExecutor
                 var dy = Math.Abs((a[2] + a[3]) / 2 - (b[2] + b[3]) / 2);
                 var dz = Math.Abs((a[4] + a[5]) / 2 - (b[4] + b[5]) / 2);
                 var aligned = (dx < 3 ? 1 : 0) + (dy < 3 ? 1 : 0) + (dz < 3 ? 1 : 0);
-                if (aligned < 2) continue;
-
-                coaxial = true;
-                var axis = dx >= dy && dx >= dz ? 0 : dy >= dz ? 2 : 4;
-                var aLo = Math.Min(a[axis], a[axis + 1]);
-                var aHi = Math.Max(a[axis], a[axis + 1]);
-                var bLo = Math.Min(b[axis], b[axis + 1]);
-                var bHi = Math.Max(b[axis], b[axis + 1]);
-                seated = Math.Abs(aLo - bHi) < 2.5
-                         || Math.Abs(bLo - aHi) < 2.5
-                         || (aLo < bHi - 0.2 && bLo < aHi - 0.2);
+                var face = FacesTouch(a, b);
+                if (face) seated = true;
+                if (aligned >= 2) coaxial = true;
                 pairInfo =
-                    $"{items[i].Name}/{items[j].Name} dX={dx:0.02} dY={dy:0.02} dZ={dz:0.02}";
-                break;
+                    $"{items[i].Name}/{items[j].Name} dX={dx:0.02} dY={dy:0.02} dZ={dz:0.02} aligned={aligned} face={face}";
             }
         }
 
-        var ok = concentric >= 1 && coaxial;
+        // Boccola centrale: 2 assi coincidono. Perno in foro decentrato: 1 asse + facce a contatto.
+        var ok = concentric >= 1 && (coaxial || seated);
         Step("verify", ok,
             $"n={items.Count} concentric={concentric} coincident={coincident} coaxial={coaxial} seated={seated} {pairInfo}");
+    }
+
+    private static bool FacesTouch(double[] a, double[] b)
+    {
+        for (var axis = 0; axis <= 4; axis += 2)
+        {
+            var aLo = Math.Min(a[axis], a[axis + 1]);
+            var aHi = Math.Max(a[axis], a[axis + 1]);
+            var bLo = Math.Min(b[axis], b[axis + 1]);
+            var bHi = Math.Max(b[axis], b[axis + 1]);
+            if (Math.Abs(aLo - bHi) < 2.5 || Math.Abs(bLo - aHi) < 2.5)
+                return true;
+        }
+
+        return false;
     }
 
     private int CountMatesOfType(ModelDoc2 model, int mateType)

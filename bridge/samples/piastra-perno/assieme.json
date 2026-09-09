@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemePiastraPerno",
+    "attachToActive": false,
+    "savePath": "CAD/AssiemePiastraPerno.SLDASM",
+    "snapshotPath": "Export/AssiemePiastraPerno.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "comp1",
+      "type": "component",
+      "path": "CAD/Piastra90.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": true
+    },
+    {
+      "id": "comp2",
+      "type": "component",
+      "path": "CAD/PernoCilindrico.SLDPRT",
+      "x": -30,
+      "y": 0,
+      "z": 10,
+      "fix": false
+    },
+    {
+      "id": "m1",
+      "type": "mate",
+      "mateType": "concentric",
+      "component1": "comp1",
+      "entity1": "inner",
+      "holeX": -30,
+      "holeY": 0,
+      "diameter": 8,
+      "component2": "comp2",
+      "entity2": "outer",
+      "diameter2": 8
+    },
+    {
+      "id": "m2",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp2",
+      "entity1": "bottom",
+      "component2": "comp1",
+      "entity2": "top"
+    },
+    {
+      "id": "v1",
+      "type": "verify"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaPiastraPerno",
+    "attachToActive": false,
+    "openPath": "Disegni/TavolaPiastraPerno.SLDDRW"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": []
+}

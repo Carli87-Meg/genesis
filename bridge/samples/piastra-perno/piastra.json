@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Piastra90",
+    "attachToActive": false,
+    "savePath": "CAD/Piastra90.SLDPRT",
+    "snapshotPath": "Export/Piastra90.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 90,
+          "height": 50,
+          "kind": "rectangle"
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketchId": "s1",
+      "depth": 6,
+      "merge": false,
+      "sketch": "s1"
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "type": "circle",
+          "cx": -30,
+          "cy": 0,
+          "diameter": 8,
+          "kind": "circle"
+        },
+        {
+          "type": "circle",
+          "cx": 30,
+          "cy": 0,
+          "diameter": 8,
+          "kind": "circle"
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketchId": "s2",
+      "throughAll": true,
+      "sketch": "s2"
+    }
+  ]
+}

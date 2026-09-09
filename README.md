@@ -22,10 +22,10 @@ Oppure in due terminali:
 
 ```powershell
 dotnet build bridge\SolidWorksBridge.csproj -c Release
-dotnet bridge\bin\Release\net8.0-windows\asmkghost.dll
+dotnet bridge\bin\Release\net8.0-windows\verkghost.dll
 ```
 
-Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `asmkghost.dll`; `dotnet …\asmkghost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
+Su questo PC AppLocker può bloccare l’`.exe` apphost e Smart App Control può bloccare un hash già visto di un DLL. L’assembly attuale è `verkghost.dll`; `dotnet …\verkghost.dll` è il modo supportato. `.\start-local.ps1` fa lo stesso.
 
 Il cartiglio **PESO Kg** usa `SW-Mass` in chilogrammi (non grammi MMGS). Il bridge imposta le unità di massa a kg e scrive le proprietà `PESO` / `Peso` / `Massa` prima del SaveAs.
 
@@ -80,6 +80,24 @@ Piastra di supporto (non kit staffa/scala): 120×80×10, tasca 50×30×5, nervat
 ```powershell
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-supporto\part.json"
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-supporto\tavola.json"
+```
+
+Assieme EN (base 100×60×8 + boccola Ø16/Ø10 h20, tavola A3 CM). Pausa 5 s:
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\base-boccola\base.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\base-boccola\boccola.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\base-boccola\assieme.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\base-boccola\tavola.json"
+```
+
+Assieme IT (piastra 90×50×6 + perno Ø8×40, tavola A3 CM):
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-perno\piastra.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-perno\perno.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-perno\assieme.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-perno\tavola.json"
 ```
 
 I file CAD del bridge finiscono in
