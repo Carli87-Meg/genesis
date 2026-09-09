@@ -393,7 +393,12 @@ function normalizeOp(raw: unknown, index: number): CadOperation | null {
   }
   if (aliased === "sketch" && !next.plane) next.plane = "Top"
   if (aliased === "sketch" && Array.isArray(next.contours)) {
-    next.contours = next.contours.map(normalizeContour).filter(Boolean)
+    next.contours = (next.contours as unknown[]).flatMap((c) => {
+      const poly = expandRegularPolygon(c)
+      if (poly) return poly
+      const n = normalizeContour(c)
+      return n ? [n] : []
+    })
   }
   if (aliased === "standardViews" || aliased === "drawingView") {
     if (typeof next.model !== "string" || !next.model.trim()) {
@@ -428,6 +433,49 @@ function inferOpType(rec: Record<string, unknown>): string {
   if (typeof rec.angle === "number") return "revolve"
   if (rec.profile && rec.path) return "sweep"
   return ""
+}
+
+/** Esagono/poligono → linee. Chiave = distanza tra facce parallele (across-flats). */
+function expandRegularPolygon(raw: unknown): unknown[] | null {
+  const rec = asRecord(raw)
+  if (!rec) return null
+  const kind = String(rec.kind ?? rec.type ?? "").toLowerCase()
+  const hex = kind === "hexagon" || kind === "esagono" || kind === "hex" || kind === "hexagonal"
+  const poly = kind === "polygon" || kind === "poligono" || kind === "regularpolygon"
+  if (!hex && !poly) return null
+  const sides = hex ? 6 : Math.max(3, Math.round(numish(rec.sides) ?? numish(rec.n) ?? 6))
+  const cx = numish(rec.cx) ?? numish(rec.x) ?? 0
+  const cy = numish(rec.cy) ?? numish(rec.y) ?? 0
+  const af =
+    numish(rec.acrossFlats) ??
+    numish(rec.chiave) ??
+    numish(rec.flats) ??
+    numish(rec.wrench) ??
+    numish(rec.af)
+  const radius =
+    numish(rec.radius) ??
+    (numish(rec.diameter) != null ? numish(rec.diameter)! / 2 : undefined)
+  const R = af != null ? af / (2 * Math.cos(Math.PI / sides)) : radius
+  if (R == null || !(R > 0)) return null
+  const start = hex ? Math.PI / 6 : 0
+  const lines: unknown[] = []
+  for (let i = 0; i < sides; i++) {
+    const a1 = start + (i * 2 * Math.PI) / sides
+    const a2 = start + ((i + 1) * 2 * Math.PI) / sides
+    lines.push({
+      kind: "line",
+      x1: round3(cx + R * Math.cos(a1)),
+      y1: round3(cy + R * Math.sin(a1)),
+      x2: round3(cx + R * Math.cos(a2)),
+      y2: round3(cy + R * Math.sin(a2)),
+      construction: false,
+    })
+  }
+  return lines
+}
+
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000
 }
 
 function normalizeContour(raw: unknown): unknown {
