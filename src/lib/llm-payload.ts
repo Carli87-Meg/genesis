@@ -204,6 +204,7 @@ export function interpretFromLlmText(
   if (jobOut) fixCountersinkAssemblyMates(jobOut)
   if (jobOut) fixCounterboreAssemblyMates(jobOut)
   if (jobOut) fixStackedColumnAssembly(jobOut)
+  if (jobOut) fixWindowCoverAssembly(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -272,6 +273,8 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   ensureStackBase(operations)
   ensureStackColumn(operations)
   ensureStackTopPlate(operations)
+  ensureWindowPlate(operations)
+  ensureWindowCover(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -1234,6 +1237,7 @@ function isCounterborePlate(ops: CadOperation[]): boolean {
   const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
   if (ext6 && hasCircleDia(ops, 8) && !hasCircleDia(ops, 12) && !ext10) return false
   if (ext8 && hasCircleDia(ops, 8) && !hasCircleDia(ops, 12) && !ext10) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 30, 18))) return false
   return ext10 || hasCircleDia(ops, 12) || hasCircleDia(ops, 6)
 }
 
@@ -1808,6 +1812,191 @@ function fixStackedColumnAssembly(jobOut: SolidWorksDocumentPayload[]): void {
 
   jobOut.length = 0
   jobOut.push(base, column, top, asm, ...drawings)
+}
+
+function windowPlateOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 70, height: 50 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 8 },
+    { id: "s2", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 30, height: 18 }] },
+    { id: "c1", type: "cut", sketch: "s2", throughAll: true },
+  ]
+}
+
+function windowCoverOps(): CadOperation[] {
+  return [
+    { id: "s1", type: "sketch", plane: "Top", contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 70, height: 50 }] },
+    { id: "e1", type: "extrude", sketch: "s1", depth: 3 },
+  ]
+}
+
+function hasRectSizeOps(ops: CadOperation[], a: number, b: number): boolean {
+  return sketchRects(ops).some((r) => isRectSize(r.width, r.height, a, b))
+}
+
+function isWindowPlate(ops: CadOperation[]): boolean {
+  if (!hasRectSizeOps(ops, 70, 50)) return false
+  if (has8050Plate(ops) || isZBracketPart(ops) || isStackBase(ops)) return false
+  if (hasRectSizeOps(ops, 80, 60) || hasRectSizeOps(ops, 50, 40)) return false
+  return hasRectSizeOps(ops, 30, 18)
+}
+
+function isWindowCover(ops: CadOperation[]): boolean {
+  if (!hasRectSizeOps(ops, 70, 50)) return false
+  if (isWindowPlate(ops) || isZBracketPart(ops) || has8050Plate(ops) || isStackBase(ops)) return false
+  if (hasRectSizeOps(ops, 30, 18) || hasRectSizeOps(ops, 50, 40)) return false
+  const ext3 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 3) < 0.6)
+  const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
+  if (ext6 && hasCircleDia(ops, 8) && !ext3) return false
+  if (ext8 && hasCircleDia(ops, 8) && !ext3) return false
+  return ext3
+}
+
+function ensureWindowPlate(ops: CadOperation[]): void {
+  if (!isWindowPlate(ops)) return
+  ops.length = 0
+  ops.push(...windowPlateOps())
+}
+
+function ensureWindowCover(ops: CadOperation[]): void {
+  if (!isWindowCover(ops)) return
+  ops.length = 0
+  ops.push(...windowCoverOps())
+}
+
+function isWindowCoverJob(docs: SolidWorksDocumentPayload[]): boolean {
+  const parts = docs.filter((d) => d.document.type === "part")
+  if (parts.length === 0) return false
+  const names = parts.map((p) => p.document.name).join(" ")
+  if (/Piastra70Finestra|Coperchio70x50|AssiemePiastraFinestra/i.test(names)) return true
+  const plates7050 = parts.filter((p) => hasRectSizeOps(p.operations, 70, 50))
+  const hasWindow = parts.some((p) => isWindowPlate(p.operations) || hasRectSizeOps(p.operations, 30, 18))
+  const hasCover = parts.some((p) => isWindowCover(p.operations))
+  if (hasWindow) return true
+  if (plates7050.length >= 2 && parts.length <= 3) return true
+  if (hasCover && plates7050.length >= 1) return true
+  return false
+}
+
+function fixWindowCoverAssembly(jobOut: SolidWorksDocumentPayload[]): void {
+  if (!isWindowCoverJob(jobOut)) return
+  if (isStackedColumnJob(jobOut)) return
+
+  const parts = jobOut.filter((d) => d.document.type === "part")
+  let plate = parts.find((p) => isWindowPlate(p.operations))
+  if (!plate) {
+    plate = parts.find(
+      (p) =>
+        hasRectSizeOps(p.operations, 70, 50) &&
+        p.operations.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6),
+    )
+  }
+  let cover = parts.find((p) => p !== plate && isWindowCover(p.operations))
+  if (!cover) {
+    cover = parts.find((p) => p !== plate && hasRectSizeOps(p.operations, 70, 50))
+  }
+  if (!plate) plate = makePartDoc("Piastra70Finestra", windowPlateOps())
+  else {
+    plate.document.name = "Piastra70Finestra"
+    plate.document.savePath = "CAD/Piastra70Finestra.SLDPRT"
+    plate.operations.length = 0
+    plate.operations.push(...windowPlateOps())
+  }
+  if (!cover) cover = makePartDoc("Coperchio70x50", windowCoverOps())
+  else {
+    cover.document.name = "Coperchio70x50"
+    cover.document.savePath = "CAD/Coperchio70x50.SLDPRT"
+    cover.operations.length = 0
+    cover.operations.push(...windowCoverOps())
+  }
+
+  let asm = jobOut.find((d) => d.document.type === "assembly")
+  if (!asm) {
+    asm = {
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "assembly",
+        name: "AssiemePiastraFinestra",
+        attachToActive: false,
+        savePath: "CAD/AssiemePiastraFinestra.SLDASM",
+        snapshotPath: "Export/AssiemePiastraFinestra.jpg",
+        snapshotView: "*Isometric",
+      },
+      variables: [],
+      configurations: [],
+      operations: [],
+    }
+  } else {
+    asm.document.name = "AssiemePiastraFinestra"
+    asm.document.savePath = "CAD/AssiemePiastraFinestra.SLDASM"
+  }
+  asm.operations = [
+    { id: "comp-p", type: "component", path: "CAD/Piastra70Finestra.SLDPRT", x: 0, y: 0, z: 0, fix: true },
+    { id: "comp-c", type: "component", path: "CAD/Coperchio70x50.SLDPRT", x: 0, y: 8, z: 0 },
+    {
+      id: "m-coin",
+      type: "mate",
+      mateType: "coincident",
+      component1: "comp-c",
+      component2: "comp-p",
+      entity1: "bottom",
+      entity2: "top",
+    },
+    { id: "v-auto", type: "verify" },
+  ]
+
+  const drawings = jobOut.filter((d) => d.document.type === "drawing")
+  for (const d of drawings) {
+    if (/Assemie|Sandwich|Tasca|Sede|TrePezzi|demo/i.test(d.document.name) || !/^Tavola/i.test(d.document.name)) {
+      d.document.name = "TavolaPiastraFinestra"
+    }
+    d.document.savePath = `Disegni/${d.document.name}.SLDDRW`
+    d.document.sheetFormat = d.document.sheetFormat || "A3"
+    for (const op of d.operations) {
+      if (op.type === "standardViews" || op.type === "drawingView") {
+        const rec = op as { model?: string }
+        rec.model = "CAD/AssiemePiastraFinestra.SLDASM"
+      }
+    }
+  }
+  if (drawings.length === 0) {
+    drawings.push({
+      schemaVersion: 2,
+      units: "mm",
+      document: {
+        type: "drawing",
+        name: "TavolaPiastraFinestra",
+        attachToActive: false,
+        savePath: "Disegni/TavolaPiastraFinestra.SLDDRW",
+        snapshotPath: "Export/TavolaPiastraFinestra.jpg",
+        sheetFormat: "A3",
+      },
+      variables: [],
+      configurations: [],
+      operations: [
+        {
+          id: "dv1",
+          type: "standardViews",
+          model: "CAD/AssiemePiastraFinestra.SLDASM",
+          firstAngle: true,
+          includeIso: true,
+        },
+        { id: "dd1", type: "modelDimensions" },
+        {
+          id: "an1",
+          type: "annotation",
+          text: "Plate 70×50×8 — through window 30×18 — cover 70×50×3",
+          x: 0.02,
+          y: 0.27,
+        },
+      ],
+    })
+  }
+
+  jobOut.length = 0
+  jobOut.push(plate, cover, asm, ...drawings)
 }
 
 const Z_BRACKET_POLY: Array<[number, number]> = [
