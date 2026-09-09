@@ -1707,6 +1707,7 @@ internal sealed partial class PayloadExecutor
                 if (ThicknessAxis(a) != ThicknessAxis(b))
                     platesPerp = true;
                 if (face) seated = true;
+                if (ThroughHoleSeated(plateBox, otherBox)) seated = true;
                 if (aligned >= 2) coaxial = true;
                 var plateAxis = ThicknessAxis(plateBox);
                 var wallAxis = ThicknessAxis(otherBox);
@@ -1916,6 +1917,24 @@ internal sealed partial class PayloadExecutor
         var sHi = Math.Max(shaft[axis], shaft[axis + 1]);
         above = sHi - pHi;
         below = pLo - sLo;
+    }
+
+    /// <summary>
+    /// Albero nel foro della flangia, una faccia a filo: il gambo occupa lo spessore
+    /// e un’estremità coincide con una faccia (FacesTouch sul bbox fallisce).
+    /// </summary>
+    private static bool ThroughHoleSeated(double[] plate, double[] shaft)
+    {
+        var axis = ThicknessAxis(plate);
+        var pLo = Math.Min(plate[axis], plate[axis + 1]);
+        var pHi = Math.Max(plate[axis], plate[axis + 1]);
+        var sLo = Math.Min(shaft[axis], shaft[axis + 1]);
+        var sHi = Math.Max(shaft[axis], shaft[axis + 1]);
+        var occupies = sLo < pHi - 0.8 && sHi > pLo + 0.8;
+        var flushLow = Math.Abs(sLo - pLo) < 2.5;
+        var flushHigh = Math.Abs(sHi - pHi) < 2.5;
+        var sticks = (flushLow && sHi > pHi + 4) || (flushHigh && sLo < pLo - 4);
+        return occupies && (flushLow || flushHigh) && sticks;
     }
 
     private int CountMatesOfType(ModelDoc2 model, int mateType)
