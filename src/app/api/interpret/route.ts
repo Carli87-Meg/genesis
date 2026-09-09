@@ -51,8 +51,9 @@ Single part: omit "job". Unique operation ids across the whole job. No sheet met
 TEMPLATES — use at most one, and only if the user request matches. Never mix them. Never emit a template the user did not ask for.
 
 Staffa a L / L-bracket / kit fissaggio a L:
-Use ONLY if the user explicitly asks for a staffa a L or L-bracket (the L-shaped kit with wall, boss Ø16, boccola). The word "staffa" alone is NOT enough.
-Do NOT use this template for: a flat staffa, a staffa with asola/slot, a staffa whose sizes are not 80×50×8, a coperchio/cover, a maniglia, or any other bracket. Example that is NOT the kit: "staffa 40×25×3 con asola 12×4" → compile a flat 40×25×3 plate with a 12×4 slot cut, new names, never StaffaFissaggio / BoccolaGuida / AssiemeStaffa.
+Use ONLY if the user asks for the kit 80×50×8 with wall 40, boss Ø16 and boccola. The word "staffa" or "staffa a L" alone is NOT enough.
+TWO plates that form an L (piastra orizzontale + piastra verticale, e.g. 80×40×5 and 50×40×5): TWO distinct SLDPRT, new names, coincident on the shared 40 mm edge (entity xmin|xmax|ymin|ymax|zmin|zmax plus one face to lock the 40 mm width). Never StaffaFissaggio / BoccolaGuida / AssiemeStaffa.
+Do NOT use this template for: two-plate L brackets, a flat staffa, a staffa with asola/slot, a staffa whose sizes are not 80×50×8, a coperchio/cover, a maniglia, or any other bracket. Example that is NOT the kit: "staffa 40×25×3 con asola 12×4" → compile a flat 40×25×3 plate with a 12×4 slot cut, new names.
 root is the main part; job = part, bushing, assembly, drawing.
 - Part: L-bracket 80×50×8 on Top, wall 80×8 extruded 40 mm on +Z edge, boss Ø16 height 14, 4 holes Ø6.5 at corners, guide bore Ø10.2 at center, cut throughAll. Names StaffaFissaggio, CAD/StaffaFissaggio.SLDPRT.
 - Bushing: circles Ø16 and Ø10.2, extrude 12 mm. BoccolaGuida, CAD/BoccolaGuida.SLDPRT.

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "assembly",
+    "name": "AssiemePiastraL",
+    "attachToActive": false,
+    "savePath": "CAD/AssiemePiastraL.SLDASM",
+    "snapshotPath": "Export/AssiemePiastraL.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "comp1",
+      "type": "component",
+      "path": "CAD/PiastraOrizzontale.SLDPRT",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "fix": true
+    },
+    {
+      "id": "comp2",
+      "type": "component",
+      "path": "CAD/PiastraVerticale.SLDPRT",
+      "x": 42.5,
+      "y": 25,
+      "z": 0,
+      "fix": false
+    },
+    {
+      "id": "m1",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp1",
+      "entity1": "xmax",
+      "component2": "comp2",
+      "entity2": "xmin",
+      "align": "anti",
+      "flip": true
+    },
+    {
+      "id": "m2",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp1",
+      "entity1": "zmin",
+      "component2": "comp2",
+      "entity2": "zmin"
+    },
+    {
+      "id": "m3",
+      "type": "mate",
+      "mateType": "coincident",
+      "component1": "comp1",
+      "entity1": "ymax",
+      "component2": "comp2",
+      "entity2": "ymin",
+      "align": "anti"
+    },
+    {
+      "id": "v1",
+      "type": "verify"
+    }
+  ]
+}

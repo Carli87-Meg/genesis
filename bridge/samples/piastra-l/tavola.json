@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaPiastraL",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaPiastraL.SLDDRW",
+    "snapshotPath": "Export/TavolaPiastraL.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/AssiemePiastraL.SLDASM",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "dm1",
+      "type": "modelDimensions"
+    },
+    {
+      "id": "an1",
+      "type": "annotation",
+      "text": "PiastraOrizzontale 80×40×5 + PiastraVerticale 50×40×5 | Fori Ø6.5 | Scala 1:1",
+      "x": 0.02,
+      "y": 0.27
+    }
+  ]
+}

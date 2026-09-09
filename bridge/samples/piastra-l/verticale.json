@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "PiastraVerticale",
+    "attachToActive": false,
+    "savePath": "CAD/PiastraVerticale.SLDPRT",
+    "snapshotPath": "Export/PiastraVerticale.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s3",
+      "type": "sketch",
+      "plane": "Right",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 25, "width": 40, "height": 50 }
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "extrude",
+      "sketch": "s3",
+      "depth": 5,
+      "merge": false
+    },
+    {
+      "id": "s4",
+      "type": "sketch",
+      "plane": "Right",
+      "contours": [
+        { "kind": "circle", "cx": -10, "cy": 25, "diameter": 6.5 },
+        { "kind": "circle", "cx": 10, "cy": 25, "diameter": 6.5 }
+      ]
+    },
+    {
+      "id": "c2",
+      "type": "cut",
+      "sketch": "s4",
+      "throughAll": true
+    }
+  ]
+}

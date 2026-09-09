@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "PiastraOrizzontale",
+    "attachToActive": false,
+    "savePath": "CAD/PiastraOrizzontale.SLDPRT",
+    "snapshotPath": "Export/PiastraOrizzontale.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        { "kind": "rectangle", "cx": 0, "cy": 0, "width": 80, "height": 40 }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketch": "s1",
+      "depth": 5,
+      "merge": false
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        { "kind": "circle", "cx": -25, "cy": -10, "diameter": 6.5 },
+        { "kind": "circle", "cx": 25, "cy": -10, "diameter": 6.5 }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketch": "s2",
+      "throughAll": true
+    }
+  ]
+}

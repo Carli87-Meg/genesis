@@ -111,6 +111,15 @@ curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\base-distanziali\tavola.json"
 ```
 
+Staffa a L a due piastre (80×40×5 + 50×40×5, tavola A3 CM):
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\orizzontale.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\verticale.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\assieme.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\tavola.json"
+```
+
 I file CAD del bridge finiscono in
 `C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\01_Progetti_Attivi\SolidworksIA\`
 (`CAD/`, `Disegni/`, `Export/`). Non in ProgramData. Override: `$env:SOLIDWORKS_OUT_DIR`.
