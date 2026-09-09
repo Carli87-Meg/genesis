@@ -202,6 +202,7 @@ export function interpretFromLlmText(
   if (jobOut) fixZBracketAssemblyMates(jobOut)
   if (jobOut) foldStandaloneRibIntoPlate(jobOut)
   if (jobOut) fixCountersinkAssemblyMates(jobOut)
+  if (jobOut) fixCounterboreAssemblyMates(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -265,6 +266,8 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   ensurePlateRib(operations)
   ensureCountersinkPlate(operations)
   normalizeCountersinkScrew(operations)
+  ensureCounterborePlate(operations)
+  normalizeCheeseHeadScrew(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -978,6 +981,18 @@ function hasFrontLines(ops: CadOperation[]): boolean {
   )
 }
 
+function maxSketchLineX(ops: CadOperation[]): number {
+  let m = 0
+  for (const o of ops) {
+    if (o.type !== "sketch") continue
+    for (const c of o.contours) {
+      if (c.kind !== "line" || c.construction) continue
+      m = Math.max(m, Math.abs(Number(c.x1)), Math.abs(Number(c.x2)))
+    }
+  }
+  return m
+}
+
 function isCountersinkPlate(ops: CadOperation[]): boolean {
   if (!sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
   if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops)) return false
@@ -996,17 +1011,19 @@ function isCountersinkPlate(ops: CadOperation[]): boolean {
 function isCountersinkScrew(ops: CadOperation[]): boolean {
   if (isCountersinkPlate(ops)) return false
   if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
   if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops)) return false
   if (hasCircleDia(ops, 16) && !hasCircleDia(ops, 6)) return false
   if (hasCircleDia(ops, 20)) return false
+  if (hasCircleDia(ops, 10) && !hasCircleDia(ops, 12)) return false
   if (hasCircleDia(ops, 14) && ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)) {
     return false
   }
-  const rev = ops.some((o) => o.type === "revolve")
-  const ext16 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 16) < 0.6)
+  const maxX = maxSketchLineX(ops)
+  if (maxX > 0 && maxX < 5.6) return false
   const d6 = hasCircleDia(ops, 6)
   const d12 = hasCircleDia(ops, 12)
-  return rev || (d6 && ext16) || (d6 && d12) || (hasFrontLines(ops) && (d6 || d12 || ext16))
+  return maxX >= 5.8 || d12 || (d6 && d12)
 }
 
 /** Piastra 50×40×6 + foro Ø6 + svasatura conica 90° Ø12 (revolve cut), non un Ø6 cilindrico. */
@@ -1191,6 +1208,195 @@ function normalizeCountersinkScrew(ops: CadOperation[]): void {
   )
 }
 
+function cheeseHeadSection(): Extract<CadOperation, { type: "sketch" }>["contours"] {
+  return [
+    { kind: "line", x1: 0, y1: 0, x2: 0, y2: 20, construction: true },
+    { kind: "line", x1: 0, y1: 0, x2: 5, y2: 0, construction: false },
+    { kind: "line", x1: 5, y1: 0, x2: 5, y2: 4, construction: false },
+    { kind: "line", x1: 5, y1: 4, x2: 3, y2: 4, construction: false },
+    { kind: "line", x1: 3, y1: 4, x2: 3, y2: 20, construction: false },
+    { kind: "line", x1: 3, y1: 20, x2: 0, y2: 20, construction: false },
+    { kind: "line", x1: 0, y1: 20, x2: 0, y2: 0, construction: false },
+  ]
+}
+
+function isCounterborePlate(ops: CadOperation[]): boolean {
+  if (!sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
+  if (has8050Plate(ops) || isLKitOrPocketPlate(ops) || isZBracketPart(ops)) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
+  const ext10 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 10) < 0.6)
+  const ext6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
+  const ext8 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
+  if (ext6 && hasCircleDia(ops, 8) && !hasCircleDia(ops, 12) && !ext10) return false
+  if (ext8 && hasCircleDia(ops, 8) && !hasCircleDia(ops, 12) && !ext10) return false
+  return ext10 || hasCircleDia(ops, 12) || hasCircleDia(ops, 6)
+}
+
+function isCheeseHeadScrew(ops: CadOperation[]): boolean {
+  if (isCounterborePlate(ops) || isCountersinkPlate(ops) || isCountersinkScrew(ops)) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 70, 50))) return false
+  if (sketchRects(ops).some((r) => isRectSize(r.width, r.height, 50, 40))) return false
+  if (has8050Plate(ops) || isZBracketPart(ops) || isLKitOrPocketPlate(ops)) return false
+  const maxX = maxSketchLineX(ops)
+  if (maxX >= 5.8) return false
+  const ext16 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 16) < 0.6)
+  const ext4 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 4) < 0.6)
+  const rev = ops.some((o) => o.type === "revolve" && o.cut !== true)
+  const d6 = hasCircleDia(ops, 6)
+  const d10 = hasCircleDia(ops, 10)
+  return (
+    rev ||
+    d10 ||
+    (d6 && ext16) ||
+    (d10 && ext4) ||
+    (hasFrontLines(ops) && maxX >= 4.5 && maxX <= 5.5)
+  )
+}
+
+function findCircleOnlySketch(ops: CadOperation[], d: number) {
+  return ops.find(
+    (o) =>
+      o.type === "sketch" &&
+      o.contours.some((c) => c.kind === "circle" && Math.abs(c.diameter - d) < 0.2) &&
+      !o.contours.some((c) => c.kind === "rectangle"),
+  )
+}
+
+/** Piastra 70×50×10 + sede Ø12×4 + foro Ø6 passante, non una svasatura conica. */
+function ensureCounterborePlate(ops: CadOperation[]): void {
+  if (!isCounterborePlate(ops)) return
+
+  const plateHit = sketchRects(ops).find((r) => isRectSize(r.width, r.height, 70, 50))
+  if (!plateHit) return
+  const plateSketch = plateHit.sketch
+  plateSketch.plane = "Top"
+  for (const c of plateSketch.contours) {
+    if (c.kind !== "rectangle" || !isRectSize(Number(c.width), Number(c.height), 70, 50)) continue
+    c.cx = 0
+    c.cy = 0
+    c.width = 70
+    c.height = 50
+  }
+  for (const op of ops) {
+    if (op.type !== "sketch") continue
+    if (!op.contours.some((c) => c.kind === "rectangle")) continue
+    op.contours = op.contours.filter((c) => c.kind === "rectangle" || (c.kind === "line" && c.construction))
+  }
+
+  let plateExt = extrudeForSketch(ops, plateSketch.id)
+  if (plateExt && plateExt.type === "extrude") {
+    plateExt.depth = 10
+  } else {
+    plateExt = { id: uniqueOpId(ops, "e-plate"), type: "extrude", sketch: plateSketch.id, depth: 10 }
+    ops.splice(ops.indexOf(plateSketch) + 1, 0, plateExt)
+  }
+
+  for (let i = ops.length - 1; i >= 0; i--) {
+    const op = ops[i]
+    if (op.type === "chamfer" || op.type === "fillet") {
+      ops.splice(i, 1)
+      continue
+    }
+    if (op.type === "revolve" && op.cut === true) ops.splice(i, 1)
+  }
+
+  for (const op of ops) {
+    if (op.type !== "sketch") continue
+    const d12 = op.contours.filter((c) => c.kind === "circle" && Math.abs(c.diameter - 12) < 0.2)
+    const d6 = op.contours.filter((c) => c.kind === "circle" && Math.abs(c.diameter - 6) < 0.2)
+    if (d12.length && d6.length) {
+      op.contours = op.contours.filter((c) => !(c.kind === "circle" && Math.abs(c.diameter - 6) < 0.2))
+    }
+  }
+
+  let boreSketch = findCircleOnlySketch(ops, 12)
+  if (!boreSketch || boreSketch.type !== "sketch") {
+    const sid = uniqueOpId(ops, "s-bore")
+    boreSketch = {
+      id: sid,
+      type: "sketch",
+      plane: "Top",
+      contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 12 }],
+    }
+    const at = ops.indexOf(plateExt) >= 0 ? ops.indexOf(plateExt) + 1 : ops.indexOf(plateSketch) + 1
+    ops.splice(at, 0, boreSketch)
+  } else {
+    boreSketch.plane = "Top"
+    for (const c of boreSketch.contours) {
+      if (c.kind !== "circle" || Math.abs(c.diameter - 12) >= 0.2) continue
+      c.cx = 0
+      c.cy = 0
+      c.diameter = 12
+    }
+  }
+
+  let boreCut = ops.find((o) => o.type === "cut" && o.sketch === boreSketch.id)
+  if (boreCut && boreCut.type === "cut") {
+    boreCut.throughAll = false
+    boreCut.depth = 4
+  } else {
+    boreCut = { id: uniqueOpId(ops, "c-bore"), type: "cut", sketch: boreSketch.id, depth: 4, throughAll: false }
+    ops.splice(ops.indexOf(boreSketch) + 1, 0, boreCut)
+  }
+
+  let holeSketch = findCircleOnlySketch(ops, 6)
+  if (holeSketch && holeSketch.id === boreSketch.id) holeSketch = undefined
+  if (!holeSketch || holeSketch.type !== "sketch") {
+    const sid = uniqueOpId(ops, "s-hole")
+    holeSketch = {
+      id: sid,
+      type: "sketch",
+      plane: "Top",
+      contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 6 }],
+    }
+    ops.splice(ops.indexOf(boreCut) + 1, 0, holeSketch)
+  } else {
+    holeSketch.plane = "Top"
+    for (const c of holeSketch.contours) {
+      if (c.kind !== "circle" || Math.abs(c.diameter - 6) >= 0.2) continue
+      c.cx = 0
+      c.cy = 0
+      c.diameter = 6
+    }
+  }
+
+  let holeCut = ops.find((o) => o.type === "cut" && o.sketch === holeSketch.id)
+  if (holeCut && holeCut.type === "cut") {
+    holeCut.throughAll = true
+    holeCut.depth = undefined
+  } else {
+    holeCut = { id: uniqueOpId(ops, "c-hole"), type: "cut", sketch: holeSketch.id, throughAll: true }
+    ops.splice(ops.indexOf(holeSketch) + 1, 0, holeCut)
+  }
+
+  const ordered: CadOperation[] = []
+  const seen = new Set<string>()
+  const take = (op: CadOperation | undefined) => {
+    if (!op || seen.has(op.id)) return
+    seen.add(op.id)
+    ordered.push(op)
+  }
+  take(plateSketch)
+  take(plateExt)
+  take(boreSketch)
+  take(ops.find((o) => o.type === "cut" && o.sketch === boreSketch.id))
+  take(holeSketch)
+  take(ops.find((o) => o.type === "cut" && o.sketch === holeSketch.id))
+  ops.length = 0
+  ops.push(...ordered)
+}
+
+/** Vite testa cilindrica Ø10×4 + gambo Ø6×16, un PRT in rivoluzione, non un cilindro Ø6. */
+function normalizeCheeseHeadScrew(ops: CadOperation[]): void {
+  if (!isCheeseHeadScrew(ops)) return
+  const sid = uniqueOpId(ops, "s-vite")
+  ops.length = 0
+  ops.push(
+    { id: sid, type: "sketch", plane: "Front", contours: cheeseHeadSection() },
+    { id: uniqueOpId(ops, "r-vite"), type: "revolve", sketch: sid, angle: 360 },
+  )
+}
+
 function pathMatches(op: CadOperation, name: string): boolean {
   if (!name) return false
   const rec = op as CadOperation & { path?: string; name?: string }
@@ -1252,6 +1458,77 @@ function fixCountersinkAssemblyMates(jobOut: SolidWorksDocumentPayload[]): void 
         component1: sComp.id,
         component2: pComp.id,
         entity1: "bottom",
+        entity2: "top",
+      }
+      d.operations.push(coincident)
+    }
+
+    let concentric = d.operations.find((op) => op.type === "mate" && op.mateType === "concentric")
+    if (concentric && concentric.type === "mate") {
+      concentric.diameter = 6
+      concentric.component1 = sComp.id
+      concentric.component2 = pComp.id
+    } else {
+      concentric = {
+        id: uniqueOpId(d.operations, "m-conc"),
+        type: "mate",
+        mateType: "concentric",
+        component1: sComp.id,
+        component2: pComp.id,
+        diameter: 6,
+      }
+      d.operations.push(concentric)
+    }
+  }
+}
+
+function fixCounterboreAssemblyMates(jobOut: SolidWorksDocumentPayload[]): void {
+  const plate = jobOut.find((d) => d.document.type === "part" && isCounterborePlate(d.operations))
+  const screw = jobOut.find((d) => d.document.type === "part" && isCheeseHeadScrew(d.operations))
+  if (!plate || !screw) return
+
+  const bannedPlate = /Piastra70Foro8|Piastra70x50Foro8|Piastra50Svasata|Piastra50Raccordo|PiastraNervatura|Piastra60Smusso/i
+  const bannedScrew = /ViteSvasata|Boccola|Distanziale|Perno8x30|Albero/i
+  if (bannedPlate.test(plate.document.name)) {
+    plate.document.name = "Piastra70Sede12"
+    plate.document.savePath = "CAD/Piastra70Sede12.SLDPRT"
+  }
+  if (bannedScrew.test(screw.document.name)) {
+    screw.document.name = "ViteCilindrica6x16"
+    screw.document.savePath = "CAD/ViteCilindrica6x16.SLDPRT"
+  }
+
+  for (const d of jobOut) {
+    if (d.document.type !== "assembly") continue
+    if (/Assemie/i.test(d.document.name) || !/^Assieme/i.test(d.document.name)) {
+      d.document.name = "AssiemePiastraSede"
+      d.document.savePath = "CAD/AssiemePiastraSede.SLDASM"
+    }
+    const plateComp = d.operations.find((op) => op.type === "component" && pathMatches(op, plate.document.name))
+    const screwComp = d.operations.find((op) => op.type === "component" && pathMatches(op, screw.document.name))
+    const comps = d.operations.filter((op) => op.type === "component")
+    const pComp = plateComp && plateComp.type === "component" ? plateComp : comps[0]
+    const sComp = screwComp && screwComp.type === "component" ? screwComp : comps.find((c) => c !== pComp)
+    if (!pComp || pComp.type !== "component" || !sComp || sComp.type !== "component") continue
+    pComp.fix = true
+    pComp.path = plate.document.savePath || pComp.path
+    sComp.path = screw.document.savePath || sComp.path
+    if (sComp.y == null || Math.abs(Number(sComp.y)) > 12) sComp.y = 0
+
+    let coincident = d.operations.find((op) => op.type === "mate" && op.mateType === "coincident")
+    if (coincident && coincident.type === "mate") {
+      coincident.component1 = sComp.id
+      coincident.component2 = pComp.id
+      coincident.entity1 = "top"
+      coincident.entity2 = "top"
+    } else {
+      coincident = {
+        id: uniqueOpId(d.operations, "m-coin"),
+        type: "mate",
+        mateType: "coincident",
+        component1: sComp.id,
+        component2: pComp.id,
+        entity1: "top",
         entity2: "top",
       }
       d.operations.push(coincident)
