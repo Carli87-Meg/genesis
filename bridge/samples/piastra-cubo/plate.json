@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Piastra100x60",
+    "attachToActive": false,
+    "savePath": "CAD/Piastra100x60.SLDPRT",
+    "snapshotPath": "Export/Piastra100x60.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s1",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 100,
+          "height": 60
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "width",
+          "value": 100
+        },
+        {
+          "entity": "height",
+          "value": 60
+        }
+      ]
+    },
+    {
+      "id": "e1",
+      "type": "extrude",
+      "sketch": "s1",
+      "depth": 8,
+      "merge": false
+    },
+    {
+      "id": "s2",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "circle",
+          "cx": -40,
+          "cy": -22,
+          "diameter": 6
+        },
+        {
+          "kind": "circle",
+          "cx": 40,
+          "cy": -22,
+          "diameter": 6
+        },
+        {
+          "kind": "circle",
+          "cx": -40,
+          "cy": 22,
+          "diameter": 6
+        },
+        {
+          "kind": "circle",
+          "cx": 40,
+          "cy": 22,
+          "diameter": 6
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "circle1_diameter",
+          "value": 6
+        },
+        {
+          "entity": "circle2_diameter",
+          "value": 6
+        },
+        {
+          "entity": "circle3_diameter",
+          "value": 6
+        },
+        {
+          "entity": "circle4_diameter",
+          "value": 6
+        },
+        {
+          "entity": "circle1_cx_from_origin",
+          "value": 40
+        },
+        {
+          "entity": "circle1_cy_from_origin",
+          "value": 22
+        },
+        {
+          "entity": "hole_spacing_x",
+          "value": 80
+        },
+        {
+          "entity": "hole_spacing_y",
+          "value": 44
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "cut",
+      "sketch": "s2",
+      "throughAll": true
+    }
+  ]
+}

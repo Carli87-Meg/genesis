@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "drawing",
+    "name": "TavolaPiastraCubo",
+    "attachToActive": false,
+    "savePath": "Disegni/TavolaPiastraCubo.SLDDRW",
+    "snapshotPath": "Export/TavolaPiastraCubo.jpg",
+    "snapshotView": "*Isometric",
+    "sheetFormat": "A3"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "dv1",
+      "type": "standardViews",
+      "model": "CAD/AssemblePiastraCubo.SLDASM",
+      "firstAngle": true,
+      "includeIso": true
+    },
+    {
+      "id": "dm1",
+      "type": "modelDimensions"
+    },
+    {
+      "id": "an1",
+      "type": "annotation",
+      "text": "Piastra 100×60×8 — 4 fori Ø6 — Cubo 20×20×20",
+      "x": 0.02,
+      "y": 0.27
+    },
+    {
+      "id": "an2",
+      "type": "annotation",
+      "text": "Materiale: non specificato | Scala 1:1 | Unità: mm",
+      "x": 0.02,
+      "y": 0.25
+    }
+  ]
+}

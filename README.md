@@ -120,6 +120,21 @@ curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application
 curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-l\tavola.json"
 ```
 
+Piastra 100×60×8 + cubo 20 mm. Percorso chat UI (Proponi + Esegui, non solo curl interpret):
+
+```powershell
+node scripts\chat-plate-cube-ui.mjs
+```
+
+Replay dei payload prodotti dalla chat (pausa 5 s tra gli execute):
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cubo\plate.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cubo\cube.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cubo\assieme.json"
+curl.exe -s -X POST http://127.0.0.1:47821/execute -H "Content-Type: application/json" --data-binary "@bridge\samples\piastra-cubo\tavola.json"
+```
+
 I file CAD del bridge finiscono in
 `C:\Users\Carli\.ARCHIVIO\CADTM_BUSINESS\00_PROGETTI_3D\01_Progetti_Attivi\SolidworksIA\`
 (`CAD/`, `Disegni/`, `Export/`). Non in ProgramData. Override: `$env:SOLIDWORKS_OUT_DIR`.

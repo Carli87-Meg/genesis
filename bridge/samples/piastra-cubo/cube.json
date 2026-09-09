@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 2,
+  "units": "mm",
+  "document": {
+    "type": "part",
+    "name": "Cubo20",
+    "attachToActive": false,
+    "savePath": "CAD/Cubo20.SLDPRT",
+    "snapshotPath": "Export/Cubo20.jpg",
+    "snapshotView": "*Isometric"
+  },
+  "variables": [],
+  "configurations": [],
+  "operations": [
+    {
+      "id": "s3",
+      "type": "sketch",
+      "plane": "Top",
+      "contours": [
+        {
+          "kind": "rectangle",
+          "cx": 0,
+          "cy": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "dimensions": [
+        {
+          "entity": "width",
+          "value": 20
+        },
+        {
+          "entity": "height",
+          "value": 20
+        }
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "extrude",
+      "sketch": "s3",
+      "depth": 20,
+      "merge": false
+    }
+  ]
+}
