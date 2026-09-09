@@ -191,6 +191,7 @@ export function interpretFromLlmText(
   let jobOut = jobDocs && jobDocs.length > 1 ? jobDocs : undefined
   if (jobOut) fillKitDefaults(jobOut)
   if (jobOut) fixZBracketAssemblyMates(jobOut)
+  if (jobOut) foldStandaloneRibIntoPlate(jobOut)
   for (const d of jobOut ?? [payload]) {
     fixDocumentSpelling(d)
     ensureCadInvariants(d)
@@ -250,6 +251,7 @@ function coerceDocument(raw: unknown): { doc: SolidWorksDocumentPayload; dropped
   operations.push(...split)
   normalizeZBracketPart(operations)
   ensureThicknessChamfer(operations)
+  ensurePlateRib(operations)
   recenterCornerOrigin(operations)
 
   const documentIn = asRecord(rec.document) ?? {}
@@ -617,6 +619,251 @@ function ensureThicknessChamfer(ops: CadOperation[]): void {
   }
   const extAfter = ops.findIndex((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 8) < 0.6)
   ops.splice((extAfter >= 0 ? extAfter : extIdx) + 1, 0, chamfer)
+}
+
+function uniqueOpId(ops: CadOperation[], prefix: string): string {
+  const ids = new Set(ops.map((o) => o.id))
+  let n = 1
+  while (ids.has(`${prefix}${n}`)) n++
+  return `${prefix}${n}`
+}
+
+function isRectSize(w: number, h: number, a: number, b: number): boolean {
+  return (
+    (Math.abs(w - a) < 0.2 && Math.abs(h - b) < 0.2) ||
+    (Math.abs(w - b) < 0.2 && Math.abs(h - a) < 0.2)
+  )
+}
+
+function sketchRects(ops: CadOperation[]): Array<{
+  sketch: Extract<CadOperation, { type: "sketch" }>
+  width: number
+  height: number
+}> {
+  const out: Array<{
+    sketch: Extract<CadOperation, { type: "sketch" }>
+    width: number
+    height: number
+  }> = []
+  for (const op of ops) {
+    if (op.type !== "sketch") continue
+    for (const c of op.contours) {
+      if (c.kind !== "rectangle") continue
+      out.push({ sketch: op, width: Number(c.width), height: Number(c.height) })
+    }
+  }
+  return out
+}
+
+function hasCircleDia(ops: CadOperation[], d: number): boolean {
+  return ops.some(
+    (o) =>
+      (o.type === "sketch" &&
+        o.contours.some((c) => c.kind === "circle" && Math.abs(c.diameter - d) < 0.2)) ||
+      (o.type === "hole" && Math.abs(o.diameter - d) < 0.2),
+  )
+}
+
+function isLKitOrPocketPlate(ops: CadOperation[]): boolean {
+  const pocket3 = ops.some(
+    (o) => o.type === "cut" && o.throughAll !== true && Math.abs(Number(o.depth) - 3) < 0.3,
+  )
+  const holes65 = ops
+    .filter((o) => o.type === "sketch")
+    .flatMap((s) => (s.type === "sketch" ? s.contours : []))
+    .filter((c) => c.kind === "circle" && Math.abs(c.diameter - 6.5) < 0.3).length
+  const hasBoss16 = hasCircleDia(ops, 16)
+  const plateExt8 = ops.some((o) => {
+    if (o.type !== "extrude" || Math.abs(Number(o.depth) - 8) >= 0.6) return false
+    const sk = ops.find((s) => s.type === "sketch" && s.id === o.sketch)
+    return (
+      sk?.type === "sketch" &&
+      sk.contours.some((c) => c.kind === "rectangle" && isRectSize(Number(c.width), Number(c.height), 80, 50))
+    )
+  })
+  return pocket3 || holes65 >= 4 || (hasBoss16 && plateExt8)
+}
+
+function isRibFootprint(w: number, h: number): boolean {
+  return isRectSize(w, h, 5, 40) || isRectSize(w, h, 5, 20) || isRectSize(w, h, 20, 40)
+}
+
+function has8050Plate(ops: CadOperation[]): boolean {
+  return sketchRects(ops).some((r) => isRectSize(r.width, r.height, 80, 50))
+}
+
+function isPlateRibCandidate(ops: CadOperation[]): boolean {
+  if (!has8050Plate(ops) || isLKitOrPocketPlate(ops)) return false
+  const hasRib = sketchRects(ops).some((r) => isRibFootprint(r.width, r.height))
+  const hasExt6 = ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 6) < 0.6)
+  return hasCircleDia(ops, 8) || hasRib || hasExt6
+}
+
+function isStandaloneRibPart(ops: CadOperation[]): boolean {
+  if (has8050Plate(ops)) return false
+  const pin =
+    hasCircleDia(ops, 8) &&
+    ops.some((o) => o.type === "extrude" && Math.abs(Number(o.depth) - 30) < 0.6) &&
+    !sketchRects(ops).some((r) => isRibFootprint(r.width, r.height))
+  if (pin) return false
+  return sketchRects(ops).some((r) => isRibFootprint(r.width, r.height))
+}
+
+function extrudeForSketch(ops: CadOperation[], sketchId: string) {
+  return ops.find((o) => o.type === "extrude" && o.sketch === sketchId)
+}
+
+/** Piastra 80×50×6 + nervatura 5×40×20 nello stesso PRT, poi foro Ø8. */
+function ensurePlateRib(ops: CadOperation[]): void {
+  if (!isPlateRibCandidate(ops)) return
+
+  const plateHit = sketchRects(ops).find((r) => isRectSize(r.width, r.height, 80, 50))
+  if (!plateHit) return
+  const plateSketch = plateHit.sketch
+  plateSketch.plane = "Top"
+  for (const c of plateSketch.contours) {
+    if (c.kind !== "rectangle" || !isRectSize(Number(c.width), Number(c.height), 80, 50)) continue
+    c.cx = 0
+    c.cy = 0
+    c.width = 80
+    c.height = 50
+  }
+
+  let plateExt = extrudeForSketch(ops, plateSketch.id)
+  if (plateExt && plateExt.type === "extrude") {
+    plateExt.depth = 6
+  } else {
+    plateExt = { id: uniqueOpId(ops, "e-plate"), type: "extrude", sketch: plateSketch.id, depth: 6 }
+    ops.splice(ops.indexOf(plateSketch) + 1, 0, plateExt)
+  }
+
+  const ribHits = sketchRects(ops).filter(
+    (r) => r.sketch.id !== plateSketch.id && isRibFootprint(r.width, r.height),
+  )
+  for (const hit of ribHits) {
+    hit.sketch.plane = "Top"
+    for (const c of hit.sketch.contours) {
+      if (c.kind !== "rectangle" || !isRibFootprint(Number(c.width), Number(c.height))) continue
+      c.cx = 0
+      c.cy = 0
+      c.width = 5
+      c.height = 40
+    }
+    const ext = extrudeForSketch(ops, hit.sketch.id)
+    if (ext && ext.type === "extrude") {
+      ext.depth = 20
+      ext.merge = true
+    } else {
+      const inserted = {
+        id: uniqueOpId(ops, "e-rib"),
+        type: "extrude" as const,
+        sketch: hit.sketch.id,
+        depth: 20,
+        merge: true,
+      }
+      ops.splice(ops.indexOf(hit.sketch) + 1, 0, inserted)
+    }
+  }
+
+  if (ribHits.length === 0) {
+    const already20 = ops.some(
+      (o) =>
+        o.type === "extrude" &&
+        Math.abs(Number(o.depth) - 20) < 0.6 &&
+        o.sketch !== plateSketch.id,
+    )
+    if (!already20) {
+      const sid = uniqueOpId(ops, "s-rib")
+      const eid = uniqueOpId(ops, "e-rib")
+      const ribSketch: CadOperation = {
+        id: sid,
+        type: "sketch",
+        plane: "Top",
+        contours: [{ kind: "rectangle", cx: 0, cy: 0, width: 5, height: 40 }],
+      }
+      const ribExt: CadOperation = { id: eid, type: "extrude", sketch: sid, depth: 20, merge: true }
+      const at = ops.indexOf(plateExt) >= 0 ? ops.indexOf(plateExt) + 1 : ops.indexOf(plateSketch) + 1
+      ops.splice(at, 0, ribSketch, ribExt)
+    }
+  }
+
+  for (const op of ops) {
+    if (op.type !== "sketch") continue
+    const hasRect = op.contours.some((c) => c.kind === "rectangle")
+    if (!hasRect) continue
+    op.contours = op.contours.filter(
+      (c) => !(c.kind === "circle" && Math.abs(c.diameter - 8) < 0.2),
+    )
+  }
+
+  if (ops.some((o) => o.type === "hole" && Math.abs(o.diameter - 8) < 0.2)) return
+
+  let holeSketch = ops.find(
+    (o) =>
+      o.type === "sketch" &&
+      o.contours.some((c) => c.kind === "circle" && Math.abs(c.diameter - 8) < 0.2) &&
+      !o.contours.some((c) => c.kind === "rectangle"),
+  )
+  if (!holeSketch || holeSketch.type !== "sketch") {
+    const sid = uniqueOpId(ops, "s-hole")
+    holeSketch = {
+      id: sid,
+      type: "sketch",
+      plane: "Top",
+      contours: [{ kind: "circle", cx: 0, cy: 0, diameter: 8 }],
+    }
+    ops.push(holeSketch)
+  } else {
+    holeSketch.plane = "Top"
+    for (const c of holeSketch.contours) {
+      if (c.kind !== "circle" || Math.abs(c.diameter - 8) >= 0.2) continue
+      c.cx = 0
+      c.cy = 0
+    }
+  }
+
+  const existingCut = ops.find((o) => o.type === "cut" && o.sketch === holeSketch.id)
+  if (existingCut && existingCut.type === "cut") {
+    existingCut.throughAll = true
+    existingCut.depth = undefined
+    const cutAt = ops.indexOf(existingCut)
+    if (cutAt >= 0) ops.splice(cutAt, 1)
+    const skAt = ops.indexOf(holeSketch)
+    if (skAt >= 0) ops.splice(skAt, 1)
+    ops.push(holeSketch, existingCut)
+  } else if (!ops.some((o) => o.type === "hole" && Math.abs(o.diameter - 8) < 0.2)) {
+    const skAt = ops.indexOf(holeSketch)
+    if (skAt >= 0 && skAt !== ops.length - 1) {
+      ops.splice(skAt, 1)
+      ops.push(holeSketch)
+    }
+    ops.push({ id: uniqueOpId(ops, "c-hole"), type: "cut", sketch: holeSketch.id, throughAll: true })
+  }
+}
+
+function foldStandaloneRibIntoPlate(docs: SolidWorksDocumentPayload[]): void {
+  const ribDocs = docs.filter((d) => d.document.type === "part" && isStandaloneRibPart(d.operations))
+  const plate = docs.find((d) => d.document.type === "part" && isPlateRibCandidate(d.operations))
+  if (!plate || ribDocs.length === 0) return
+  ensurePlateRib(plate.operations)
+  const ribNames = new Set(ribDocs.map((d) => d.document.name))
+  for (const d of docs) {
+    if (d.document.type !== "assembly") continue
+    const dropIds = new Set<string>()
+    for (const op of d.operations) {
+      if (op.type !== "component") continue
+      const path = String(op.path || op.name || "")
+      if ([...ribNames].some((n) => n && path.includes(n))) dropIds.add(op.id)
+    }
+    d.operations = d.operations.filter((op) => {
+      if (op.type === "component" && dropIds.has(op.id)) return false
+      if (op.type === "mate" && (dropIds.has(op.component1) || dropIds.has(op.component2))) return false
+      return true
+    })
+  }
+  for (let i = docs.length - 1; i >= 0; i--) {
+    if (ribNames.has(docs[i].document.name)) docs.splice(i, 1)
+  }
 }
 
 const Z_BRACKET_POLY: Array<[number, number]> = [
